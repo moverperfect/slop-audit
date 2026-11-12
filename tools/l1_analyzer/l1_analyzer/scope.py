@@ -393,17 +393,39 @@ def _rglob_files(repo: Path, pattern: str) -> Iterator[Path]:
         return result
 
     ignored = _ignored_paths(repo)
+    # The ignored check first, because it asks nothing of the filesystem and it is the one
+    # that turns away a `node_modules`. The order changes which files cost a syscall, never
+    # which files come out: every condition here is a filter on the same walk.
     return (
         p for p in repo.rglob(pattern)
-        if p.is_file()
-        and p.resolve() not in ignored
+        if not _gitignored(p.relative_to(repo).parts, ignored)
+        and p.is_file()
         and not under_symlinked_dir(p.parent, repo)
         and not under_nested_checkout(p.parent.resolve())
     )
 
 
-def _ignored_paths(repo: Path) -> frozenset[Path]:
-    """Every path this repository's own `.gitignore` excludes, resolved.
+def _gitignored(parts: tuple[str, ...], ignored: frozenset[str]) -> bool:
+    """Whether a path below the root, given as its parts, is one the project ignores: the
+    path itself, or any directory it sits in.
+
+    The directory half is what lets git name `node_modules` once. It returns at the first
+    prefix that matches, so a file deep inside an ignored tree costs one lookup."""
+    return any("/".join(parts[:depth]) in ignored for depth in range(1, len(parts) + 1))
+
+
+def _ignored_paths(repo: Path) -> frozenset[str]:
+    """Every path this repository's own `.gitignore` excludes, relative to the root, with a
+    wholly ignored directory named once rather than file by file.
+
+    ONE ENTRY PER IGNORED DIRECTORY, since 2026-11-12. git listed every ignored file and each
+    was resolved against the filesystem, on every one of the fifty-odd scans in a source pass.
+    An Astro site's checkout ignores 138,468 files under `node_modules`; resolving them took 128
+    seconds on Windows, and the source pass 75 minutes, where the same pass over a copy without
+    `node_modules` took 20 seconds. `--directory` says the same thing in one line per tree, and
+    git does not collapse a directory that holds a tracked file, so a file force-added past its
+    own ignore rule is still read. Compared as git spells the paths rather than resolved: the
+    walk yields paths under the root as given, so the relative path is the same string.
 
     An audit measures what the project says is part of it. A `.gitignore` entry is that
     statement, written by whoever put it there: a build directory, a vendored dependency, a
@@ -432,10 +454,10 @@ def _ignored_paths(repo: Path) -> frozenset[Path]:
     from l1_analyzer.indicators import _run_external
 
     run = _run_external(
-        ["git", "ls-files", "--others", "--ignored", "--exclude-standard", "-z"], repo)
+        ["git", "ls-files", "--others", "--ignored", "--exclude-standard", "--directory", "-z"], repo)
     if not run["ran"] or run["status"] != 0:
         return frozenset()
-    return frozenset((repo / name).resolve() for name in run["output"].split("\0") if name)
+    return frozenset(name.rstrip("/") for name in run["output"].split("\0") if name)
 
 
 # Conventional build/test/dev tooling recognised by filename, not by directory.

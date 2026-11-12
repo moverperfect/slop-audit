@@ -9,6 +9,14 @@ Feature: scope — deciding which files are the code under audit and which are s
     Then a build output, a vendored dependency or a scratch tree kept for reference is left out, because the project has already said it is not its own code
     And a file written five minutes ago and never added is still read, since untracked and ignored are different questions and only the second is about belonging
     But a tree with no git at all gives back nothing to skip, so a tarball or an extracted archive still measures rather than refusing
+    And a wholly ignored directory comes back as one entry rather than one per file, so a node_modules costs one line and no filesystem lookups
+
+  Scenario: _gitignored decides whether a path below the root is one the project ignores
+    Given a path below the repository root, as its parts, and the entries _ignored_paths returned
+    When _gitignored checks the path and each directory it sits in against those entries
+    Then it answers yes for an ignored file and for any file inside an ignored directory, stopping at the first directory that matches
+    And it asks nothing of the filesystem, so the walk can turn an ignored tree away before it costs a syscall
+    But a path neither ignored itself nor inside an ignored directory answers no, including a tracked file git would not let a directory entry cover
 
   # The undecidable case. Every feature carries exactly one, and the gate requires it, because
   # a measure that meets a construct it has no rule for must say so rather than return a verdict.
