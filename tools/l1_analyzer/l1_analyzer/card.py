@@ -698,7 +698,11 @@ def _coverage_pair(results: Panel, ran_tests: bool) -> CoveragePair | None:
         return {"measured": False, "value": None,
                 "reason": "the coverage reading did not run"}
     value = row["value"]
-    if not isinstance(value, (int, float)):
+    # The band says whether a share was measured, and the value cannot. When the runtime half
+    # does not run, L1.19 keeps its static half: the NUMBER of decision points, band n/a. This
+    # read any number as a share, and printed an Astro site's 1,443 decision points as "1443.0%
+    # of decisions exercised" on a card whose coverage nobody had measured.
+    if row["band"] == "n/a" or not isinstance(value, (int, float)):
         return {"measured": False, "value": None, "reason": str(row["details"])}
     return {"measured": True, "value": float(value), "reason": ""}
 
