@@ -2033,6 +2033,10 @@ _TYPESCRIPT["declared_bound_types"] = ("type_annotation",)
 _TYPESCRIPT["return_type_field"] = "return_type"
 _TYPESCRIPT["absent_markers"] = ("null", "undefined")
 _TYPESCRIPT["scalar_types"] = frozenset({"number", "string", "boolean", "bigint", "symbol"})
+# `(typeof SIZES)[number]` asks the compiler for a constant's type and is erased before the
+# program runs, so the value is never read there: C#'s `typeof(T)` row, spelled in a type.
+# The runtime `typeof x === "string"` is a unary_expression over a value and is not this node.
+_TYPESCRIPT["unread_operand_types"] = ("type_query",)
 
 # The overridden keys, named once so a test can assert that nothing ELSE diverged. Written
 # out per key above rather than merged from a dict of object, so each value is checked
@@ -2041,7 +2045,7 @@ TYPESCRIPT_OVERRIDES = frozenset({
     "binding_sites", "default_param_name", "default_param_types", "field_decl_types",
     "absent_markers", "declared_bound_types", "immutable_modifiers", "passthrough_types",
     "return_type_field", "scalar_types",
-    "typed_param_types",
+    "typed_param_types", "unread_operand_types",
     "value_wrapper_types",
 })
 

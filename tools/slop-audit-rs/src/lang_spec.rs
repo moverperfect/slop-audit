@@ -891,7 +891,7 @@ pub const LANG_SPECS: &[LangSpec] = &[
         switch_types: &[("switch_statement", "value", Some("switch_case"))],
         this_idents: &["this"],
         unary_types: &["unary_expression"],
-        unread_operand_types: &[],
+        unread_operand_types: &["type_query"],
         value_preserving_methods: &[],
         value_wrapper_types: &["unary_expression", "parenthesized_expression", "non_null_expression", "as_expression"],
         write_in_place_ops: &[("update_expression", &["++", "--"])],
