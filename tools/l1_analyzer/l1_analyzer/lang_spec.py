@@ -928,7 +928,11 @@ LANG_SPEC: dict[str, LangSpec] = {
         "return_types": ("return_statement",),
         "branch_types": ("if_statement", "while_statement", "ternary_expression"), "branch_cond": "condition",
         "elif_types": (),
-        "passthrough_types": ("parenthesized_expression", "unary_expression"),
+        # A template literal is concatenation with other punctuation, and arithmetic already
+        # lets a derived value flow on: the substitution reads the value and the template
+        # string carries what it derived. Whatever receives the string decides the reading.
+        "passthrough_types": ("parenthesized_expression", "unary_expression",
+                              "template_substitution", "template_string"),
         "comparison_types": ("binary_expression",),
         "membership": "binary_in",
         "this_idents": frozenset({"this"}),
@@ -2017,6 +2021,7 @@ _TYPESCRIPT["immutable_modifiers"] = frozenset({"const", "readonly"})
 # `x!` and `x as T` are TypeScript-only wrappers, and both are transparent: the value under
 # them is the value. A walk that stopped at either would lose the operand.
 _TYPESCRIPT["passthrough_types"] = ("parenthesized_expression", "unary_expression",
+                                    "template_substitution", "template_string",
                                     "non_null_expression", "as_expression")
 _TYPESCRIPT["value_wrapper_types"] = ("unary_expression", "parenthesized_expression",
                                       "non_null_expression", "as_expression")
