@@ -69,6 +69,7 @@ Feature: indicators — the Layer-1 indicator computations, L1.1 through L1.20
     Given a repository, a language name or the word auto, whether tests may be executed, a timeout and the optional interpreter
     When compute_source_indicators resolves the language and calls each source indicator in turn
     Then it returns the whole L1.12 through L1.20 set in one map
+    And when the caller names the indicators it wants, only those run, and the refinements travel with L1.18, so asking for the two runtime readings reads nothing else in the repository
     And the refinements, which are the state-bounds classification, path cover, thread surface and absolute paths, are added only when the caller asks for them, so a frozen pre-registered run gets exactly the original set
     But the resolved language name is stored in that same map under its own key while being a plain name and not a banded result, so every consumer has to know to step over it
 

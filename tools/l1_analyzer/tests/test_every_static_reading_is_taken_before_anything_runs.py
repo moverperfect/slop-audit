@@ -45,7 +45,7 @@ def a_repository(tmp_path: Path) -> Path:
 def test_the_two_rows_that_execute_are_the_last_two_written(tmp_path):
     panel = indicators.compute_source_indicators(
         a_repository(tmp_path), lang="python", exec_tests=False, timeout_seconds=30.0,
-        classify_state_bounds=True, python_executable=None, build_args=())
+        classify_state_bounds=True, python_executable=None, build_args=(), selected=None)
     written = [key for key in panel if key != "lang"]
     assert written[-2:] == list(EXECUTING), (
         "every static reading must be taken before anything runs, and these are the last "
@@ -57,7 +57,7 @@ def test_no_static_row_is_written_after_a_row_that_executes(tmp_path):
     new static row were appended at the very end and the two executing rows moved up one."""
     panel = indicators.compute_source_indicators(
         a_repository(tmp_path), lang="python", exec_tests=False, timeout_seconds=30.0,
-        classify_state_bounds=True, python_executable=None, build_args=())
+        classify_state_bounds=True, python_executable=None, build_args=(), selected=None)
     written = [key for key in panel if key != "lang"]
     first_executing = min(written.index(code) for code in EXECUTING)
     after = [key for key in written[first_executing:] if key not in EXECUTING]

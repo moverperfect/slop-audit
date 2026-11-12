@@ -78,7 +78,7 @@ def test_every_language_config_has_required_keys():
 def test_compute_source_indicators_rejects_unexpected_kwargs(tmp_path):
     (tmp_path / "acc.py").write_text("x = 1\n")
     with pytest.raises(TypeError):
-        indicators.compute_source_indicators(tmp_path, lang="python", exec_tests=False, timeout_seconds=5.0, bogus=1, python_executable=None, build_args=())
+        indicators.compute_source_indicators(tmp_path, lang="python", exec_tests=False, timeout_seconds=5.0, bogus=1, python_executable=None, build_args=(), selected=None)
 
 
 # --- skipped files are surfaced, never silently dropped ---------------------
@@ -624,7 +624,7 @@ def test_l1_12_and_l1_14_are_native_and_need_no_tool_on_path(tmp_path, monkeypat
         'AWS = "' + "AKIA" + "2E0RTQ4KJ7X9WZ1P" + '"\n\n\ndef orphan():\n    return 1\n')
     res = indicators.compute_source_indicators(
         tmp_path, lang="auto", exec_tests=False, timeout_seconds=5, classify_state_bounds=False,
-        python_executable=None, build_args=())
+        python_executable=None, build_args=(), selected=None)
     assert res["L1.12"]["band"] != "n/a" and res["L1.12"]["value"] > 0
     assert res["L1.14"]["value"] == 1 and res["L1.14"]["band"] == "Not Healthy"
 

@@ -269,8 +269,19 @@ def compute_source_indicators(
     classify_state_bounds: bool,
     python_executable: str | None,
     build_args: tuple[str, ...],
+    selected: frozenset[str] | None,
 ) -> Panel:
     """L1.12-L1.20. `lang` may be "auto" (resolved here) or a concrete key.
+
+    `selected` is the bare L1 numbers the caller asked for, as `--indicators` spells them, and
+    None for all of them. Each reading runs only when its number is in it. It chose nothing
+    until 2026-11-12: one source number asked for the whole pass, so `--indicators 19,20` read
+    a whole repository for twelve readings nobody wanted before it ran the suite, about
+    seventy-eight minutes on an Astro site on Windows. L1.18's refinements travel with 18,
+    the grouping `classify_state_bounds` already gives them. None keeps every reading in the
+    order it always ran, which is the full panel byte for byte. Required, like the two
+    arguments before it: a defaulted None could not tell a caller that chose every reading
+    from one that forgot this parameter exists.
     `exec_tests` gates the two runtime indicators (L1.19 coverage, L1.20);
     `timeout_seconds` bounds each test-suite execution.
 
@@ -290,23 +301,31 @@ def compute_source_indicators(
     # The panel, as its own declaration. It said `dict[str, L1Result]` while the language,
     # the path cover, the thread surface, the state reading and two indicators carrying
     # findings all went into it, so six of its rows disagreed with the line above them.
+    asked = SOURCE_INDICATORS if selected is None else selected
     results: Panel = {"lang": lang}
-    results["L1.16"] = _measure(_trailing_whitespace, repo)
-    results["L1.17"] = _measure(_god_files, repo)
-    results["L1.18"] = _measure(analyze_mutable_state, repo, lang)
-    results["L1.15"] = _compute_type_escapes(repo, lang)
+    if "16" in asked:
+        results["L1.16"] = _measure(_trailing_whitespace, repo)
+    if "17" in asked:
+        results["L1.17"] = _measure(_god_files, repo)
+    if "18" in asked:
+        results["L1.18"] = _measure(analyze_mutable_state, repo, lang)
+    if "15" in asked:
+        results["L1.15"] = _compute_type_escapes(repo, lang)
     # L1.12 and L1.14, native on tree-sitter. Both were external-tool delegations that
     # reported n/a on any machine without vulture or gitleaks, and reported a fabricated
     # zero on any machine that had gitleaks and a real leak (see ExternalRun).
     from l1_analyzer import dead_code, secret_scan
     # Both return dict[str, object], the same shape state_bounds.classify returns for
     # L1.18b: value/band/details plus the finding lists that make the number readable.
-    results["L1.12"] = dead_code.analyze(repo, lang)
-    results["L1.14"] = secret_scan.analyze(repo, lang)
+    if "12" in asked:
+        results["L1.12"] = dead_code.analyze(repo, lang)
+    if "14" in asked:
+        results["L1.14"] = secret_scan.analyze(repo, lang)
     # One row, written by name. `update` from another panel would let this builder be
     # handed any row the panel knows and pass it through without saying which.
-    results["L1.13"] = _compute_external_indicators(repo, lang)["L1.13"]
-    if classify_state_bounds:
+    if "13" in asked:
+        results["L1.13"] = _compute_external_indicators(repo, lang)["L1.13"]
+    if classify_state_bounds and "18" in asked:
         from l1_analyzer import state_bounds
         results["L1.18b"] = state_bounds.classify(repo, lang)
         from l1_analyzer import path_cover
@@ -344,11 +363,18 @@ def compute_source_indicators(
     #
     # Seven readings sat below the coverage run before this: L1.12, L1.13, L1.14, L1.18b,
     # the path cover, the thread surface and the absolute-path scan.
-    results["L1.19"] = _decision_space_l19(repo, lang, exec_tests, timeout_seconds,
-                                           python_executable, build_args)
-    results["L1.20"] = _test_determinism_l20(repo, lang, exec_tests, timeout_seconds,
-                                             python_executable)
+    if "19" in asked:
+        results["L1.19"] = _decision_space_l19(repo, lang, exec_tests, timeout_seconds,
+                                               python_executable, build_args)
+    if "20" in asked:
+        results["L1.20"] = _test_determinism_l20(repo, lang, exec_tests, timeout_seconds,
+                                                 python_executable)
     return results
+
+
+# The source readings by their bare L1 numbers, as `--indicators` spells them. The CLI's
+# table of what each stage computes reads this one.
+SOURCE_INDICATORS = frozenset({"12", "13", "14", "15", "16", "17", "18", "19", "20"})
 
 _WHITESPACE_EXTS = frozenset({".py", ".rs", ".c", ".h", ".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".java", ".cs", ".rb", ".go"})
 _GOD_FILE_EXTS = frozenset({".py", ".rs", ".c", ".h", ".js", ".ts", ".java", ".cs", ".go", ".rb"})

@@ -41,7 +41,7 @@ from l1_analyzer.thread_surface import Finding as ThreadFinding
 # reads closed is L1.21.18, and this tool reports that clause against other people's code.
 _GIT_INDICATORS = frozenset({"1", "2", "3", "4", "5", "6", "7", "8"})
 _CONFIG_INDICATORS = frozenset({"9", "10", "11"})
-_SOURCE_INDICATORS = frozenset({"12", "13", "14", "15", "16", "17", "18", "19", "20"})
+_SOURCE_INDICATORS = indicators.SOURCE_INDICATORS
 
 INDICATORS = _GIT_INDICATORS | _CONFIG_INDICATORS | _SOURCE_INDICATORS
 
@@ -565,7 +565,9 @@ FLAGS: tuple[tuple[list[str], Flag], ...] = (
      }),
     (["--indicators"], {
      "default": "all",
-     "help": "Comma-separated L1 numbers or 'all' (default). E.g. 1,2,18",
+     "help": "Comma-separated L1 numbers or 'all' (default). E.g. 1,2,18. Each source "
+             "indicator (12-20) runs only when named, and 18 brings its refinements; "
+             "naming any git (1-8) or config (9-11) indicator runs that whole stage.",
      }),
     (["--lang"], {
      "default": "auto",
@@ -966,7 +968,7 @@ def main(argv: list[str] | None) -> int:
         source_results = indicators.compute_source_indicators(
             args.repo, lang=args.lang, exec_tests=not args.no_exec, timeout_seconds=args.timeout,
             classify_state_bounds=not args.no_state_bounds, python_executable=args.python,
-            build_args=tuple(args.cargo_arg)
+            build_args=tuple(args.cargo_arg), selected=inds,
         )
         results.update(source_results)
 
