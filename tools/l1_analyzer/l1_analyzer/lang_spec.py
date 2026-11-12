@@ -960,8 +960,11 @@ LANG_SPEC: dict[str, LangSpec] = {
         # string carries what it derived. Whatever receives the string decides the reading.
         # A spread hands its elements on unchanged, to a call's arguments or to the literal
         # around it, which is where the holding row picks them up.
+        # `await x` resolves to the value x holds, which is the row Python's `await` and Rust's
+        # `await_expression` already have.
         "passthrough_types": ("parenthesized_expression", "unary_expression",
-                              "template_substitution", "template_string", "spread_element"),
+                              "template_substitution", "template_string", "spread_element",
+                              "await_expression"),
         "comparison_types": ("binary_expression",),
         "membership": "binary_in",
         "this_idents": frozenset({"this"}),
@@ -2075,9 +2078,12 @@ _TYPESCRIPT["immutable_modifiers"] = frozenset({"const", "readonly"})
 # them is the value. A walk that stopped at either would lose the operand.
 _TYPESCRIPT["passthrough_types"] = ("parenthesized_expression", "unary_expression",
                                     "template_substitution", "template_string", "spread_element",
-                                    "non_null_expression", "as_expression")
+                                    "await_expression",
+                                    "non_null_expression", "as_expression", "satisfies_expression")
+# `x satisfies T` checks x against a type and leaves it exactly as it was; the state
+# enumerator already looks through it, and now the flow walker and the literal peel do too.
 _TYPESCRIPT["value_wrapper_types"] = ("unary_expression", "parenthesized_expression",
-                                      "non_null_expression", "as_expression")
+                                      "non_null_expression", "as_expression", "satisfies_expression")
 # An annotated parameter parses as `required_parameter` whether it carries a default or not,
 # so the node type alone says nothing and the `=` token is what decides.
 _TYPESCRIPT["default_param_types"] = ("assignment_pattern", "required_parameter",
