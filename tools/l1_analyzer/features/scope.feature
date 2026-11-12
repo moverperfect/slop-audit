@@ -25,7 +25,7 @@ Feature: scope — deciding which files are the code under audit and which are s
     But a symlinked FILE is unaffected, since is_file follows symlinks on purpose and one file is not a tree
 
   Scenario: undecidable a test-directory convention no marker in the scope names
-    Given a repository whose tests sit in a directory named by a convention outside the two markers, such as a JavaScript __tests__ tree, a Ruby spec tree, or a Cucumber features tree
+    Given a repository whose tests sit in a directory named by a convention outside the three markers, such as a Ruby spec tree or a Cucumber features tree
     When _bucket_reason tests that path against the vendored list, the scope's markers, the docs directory, the tooling names and the loose-root-script rule
     Then it is recorded as unread rather than as the same nothing a file that was examined and kept receives, so a scope disclosure means read-and-kept and never not-looked-at
     And the parse-tree shape around it is offered for collection: node types and nesting, every leaf value stripped
@@ -35,7 +35,7 @@ Feature: scope — deciding which files are the code under audit and which are s
   Scenario: scope_rule gives one named scope the whole of its rule
     Given the name of a scope
     When scope_rule looks that name up in the scope table
-    Then it returns the directory names that scope removes: the two test-directory names for the production scope, those plus the conformance directory for the scope the god-file and state meters use, and none at all for the whole-repository scope
+    Then it returns the directory names that scope removes: the three test-directory names for the production scope, those plus the conformance directory for the scope the god-file and state meters use, and none at all for the whole-repository scope
     And it returns which of documentation, conventional tooling files and loose root scripts that scope sets aside, where the whole-repository scope sets aside none of the three, because the ratio of test lines to production lines and the discipline of the repository's whitespace are questions about every file and skipping the documentation would answer a narrower question under the wider question's name
     And the caller names the field it wants rather than calling a function per field, which were two names over one lookup and one shape to the conformity check
     And routing every reader through it is what stops an indicator measuring under a scope nobody wrote down
@@ -54,6 +54,20 @@ Feature: scope — deciding which files are the code under audit and which are s
     Then it answers yes for a name beginning with the test prefix in its underscore, hyphen or dot spelling, a stem ending in a test or spec suffix in any of those spellings, a doubled test or spec extension, or the .NET and JVM capitalised stem endings
     And the hyphen spelling matters because a genuine C test tree can carry no framework import at all and would otherwise be measured as production
     But it deliberately ignores the path, which is the arm that would let the directory under examination vouch for itself
+
+  Scenario: _test_file_corroborated checks that a file named like a test really is one
+    Given a source file sitting beside the production code it tests, such as price.test.ts next to price.ts or calc_test.go next to calc.go
+    When _test_file_corroborated asks whether its name follows a test convention and its first four kilobytes name a test framework
+    Then it answers yes only when both hold, which is the evidence a test directory has to show
+    And a file that answers yes is set aside by every scope that removes test directories, with its own reason in the disclosure
+    But a test name with no framework behind it answers no and the file is measured, because a name is free to forge and the rule must not make renaming a production file a cheaper score
+
+  Scenario: is_a_test_reason says whether a scope reason means the file is somebody's test
+    Given the reason _bucket_reason gave for setting a file aside, or none
+    When is_a_test_reason is asked about it
+    Then it answers yes for each test-directory marker and for the reason given to a corroborated test file
+    And the dead-code reader and the secret scanner both split production from tests by it, so a new test reason reaches both
+    But every other reason, and no reason at all, answers no
 
   Scenario: _claiming_dir finds which ancestor directory is the one making the test claim
     Given a path and the name of one of its components
@@ -127,7 +141,7 @@ Feature: scope — deciding which files are the code under audit and which are s
 
   Scenario: _bucket_reason gives the one reason a source file is set aside, or keeps it
     Given a path, the repository, whether the repository has packages, and a scope name
-    When _bucket_reason tests the path in order against the vendored list, the scope's markers, machine output, and then whichever of the docs directory, the conventional tooling file names and the loose-root-script rule the scope's judgment calls name
+    When _bucket_reason tests the path in order against the vendored list, the scope's markers, a corroborated test file where the scope removes tests, machine output, and then whichever of the docs directory, the conventional tooling file names and the loose-root-script rule the scope's judgment calls name
     Then it returns the first reason that applies, and nothing when the file stays in the audit
     And a file a tool generated is set aside for every measurement that reads this scope, because a parser table or a build stamp is the output of a generator and no number an audit puts on it describes this repository
     And the loose-root-script reason fires only for a file directly at the root of a repository that has packages and is not itself a package, so a flat script-only repository keeps its root scripts because they are the code

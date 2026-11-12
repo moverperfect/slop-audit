@@ -36,7 +36,14 @@ _IGNORE_DIRS = frozenset({
 # absolute-path check (Newtonsoft.Json reported 31 absolute paths, all of them stack-
 # trace fixture data). Deliberately this narrow: "spec", "fixtures" and the rest are
 # not test-directory conventions in the languages this scope covers.
-_TEST_DIR_MARKERS = frozenset({"test", "tests"})
+#
+# `__tests__` joined on 2026-11-12. It IS a test-directory convention in a language this scope
+# covers: Jest's default, and common under vitest. It is corroborated like the other two.
+_TEST_DIR_MARKERS = frozenset({"test", "tests", "__tests__"})
+
+# The reason a single FILE named like a test, and corroborated as one, is set aside. The
+# directory reasons are the markers themselves; this one has no directory to name.
+TEST_FILE = "test-file"
 
 
 # ---------------------------------------------------------------------------
@@ -93,7 +100,7 @@ SCOPES: dict[str, Scope] = {
     # that fires on its own fixtures measures the fixtures: this repo's own tests carried
     # 24 of 57 absolute-path findings on the run that prompted the scope fix.
     PRODUCTION: {
-        "excludes": ("tests", "test"),
+        "excludes": ("tests", "test", "__tests__"),
         "buckets": ("docs", "tooling", "root-script"),
         # L1.12 measures dead code in production source and divides by production LOC, and
         # it splits its reference sites into production and test so a symbol only the
@@ -113,7 +120,7 @@ SCOPES: dict[str, Scope] = {
     # is production neither for the state meters nor for the god-file count: nobody
     # hand-piles logic into an append-only conformance table.
     PRODUCTION_WITHOUT_CONFORMANCE: {
-        "excludes": ("tests", "test", "conformance"),
+        "excludes": ("tests", "test", "__tests__", "conformance"),
         "buckets": ("docs", "tooling", "root-script"),
         # L1.21 joined on 2026-09-05. It had reached for PRODUCTION directly, so the table
         # could say a directory is not production and the clause check would read it
@@ -177,6 +184,13 @@ _TEST_FRAMEWORK_MARKERS = (
     '"testing"', "#[test]", "#[cfg(test)]",
     "require 'rspec'", 'require "rspec"', "minitest", "describe(",
     "from vitest", "require('mocha')",
+    # The JavaScript imports as JavaScript writes them. `from vitest` above matches no import
+    # anyone writes: the module name is quoted. A vitest file whose `describe(` sits past the
+    # first 4 KiB, behind its mocks, or that uses `test(` and no `describe` at all, carried
+    # no marker this table could see. Measured on an Astro site's 132 test files: nine
+    # corroborated by nothing here, and all nine by these.
+    "from 'vitest'", 'from "vitest"', "from '@jest/globals'", 'from "@jest/globals"',
+    "from 'node:test'", 'from "node:test"', "from '@playwright/test'", 'from "@playwright/test"',
 )
 
 _TEST_MARKER_WINDOW = 4096       # a framework import sits at the top of a file
@@ -235,6 +249,33 @@ def _test_file_by_name(path: Path) -> bool:
             or stem.endswith(("_test", "-test", ".test", ".spec", "_spec", "-spec"))
             or name.endswith((".test" + suffix, ".spec" + suffix))
             or path.stem.endswith(_TEST_STEM_SUFFIXES))
+
+
+def _test_file_corroborated(path: Path) -> bool:
+    """True when a file named like a test actually is one: the name follows a test convention
+    AND its own opening names a test framework.
+
+    JavaScript, TypeScript and Go write a test beside the file it tests, `price.test.ts` next
+    to `price.ts` and `calc_test.go` next to `calc.go`, so no directory names it and the scope
+    measured every one as production. On an Astro and vitest site that was 115 of 373 files.
+
+    The name alone is not believed, for the reason _test_dir_corroborated gives: renaming a
+    production file to `billing.test.ts` would take it out of every production indicator at
+    the cost of nothing. The evidence asked of the file is the evidence a test directory has
+    to show, a framework marker in its first 4 KiB, so forging it costs an import of a test
+    framework into the code under audit. A file that fails is measured, never dropped."""
+    return _test_file_by_name(path) and head_carries_any(
+        boundary_in_file_head(path, _TEST_MARKER_WINDOW), _TEST_FRAMEWORK_MARKERS)
+
+
+def is_a_test_reason(reason: str | None) -> bool:
+    """Whether a reason `_bucket_reason` gave means the file is somebody's test.
+
+    Two readers split the repository into production and test by this: dead code, so a name
+    only the tests call is disclosed as test-only, and the secret scanner, so a fixture
+    credential is labelled as one. Each spelled the test reasons out as `("tests", "test")`,
+    so a reason added here would have been filed as production by both without a word."""
+    return reason in _TEST_DIR_MARKERS or reason == TEST_FILE
 
 
 def _claiming_dir(path: Path, component: str) -> Path | None:
@@ -466,6 +507,10 @@ def _bucket_reason(path: Path, repo: Path, has_packages: bool, scope: str) -> st
     reason = _extra_reason(parts, rule["excludes"], path)
     if reason is not None:
         return reason
+    # A test written beside its source, under every scope that removes test directories: the
+    # file-sized case of the same rule, with the same corroboration asked of it.
+    if set(rule["excludes"]) & _TEST_DIR_MARKERS and _test_file_corroborated(path):
+        return TEST_FILE
     calls = rule["buckets"]
     if "docs" in calls and "docs" in parts:
         return "docs"

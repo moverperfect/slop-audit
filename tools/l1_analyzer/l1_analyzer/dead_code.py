@@ -59,6 +59,7 @@ from l1_analyzer.scope import (
     _read_source_bytes,
     _repo_has_packages,
     _rglob_files,
+    is_a_test_reason,
 )
 from l1_analyzer.ts_nodes import descendants
 
@@ -615,7 +616,7 @@ def _classify_files(repo: Path) -> tuple[frozenset[str], frozenset[str]]:
             continue
         relpath = str(path.relative_to(repo)) if repo in path.parents else path.name
         reason = _bucket_reason(path, repo, has_packages, PRODUCTION)
-        (tests if reason in ("tests", "test") else production).add(relpath)
+        (tests if is_a_test_reason(reason) else production).add(relpath)
     return frozenset(production), frozenset(tests)
 
 

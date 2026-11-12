@@ -67,6 +67,7 @@ from l1_analyzer.scope import (
     _in_ignored_dir,
     _repo_has_packages,
     _rglob_files,
+    is_a_test_reason,
 )
 
 
@@ -487,7 +488,7 @@ def analyze(repo: Path, lang: str) -> SecretScanRow:
             continue
         scanned += 1
         bucket = _bucket_reason(path, repo, has_packages, PRODUCTION)
-        in_tests = bucket in ("tests", "test")
+        in_tests = is_a_test_reason(bucket)
         # A test can also be a REGION of a production file. Rust writes its unit tests inside
         # the file they test, so no path names them, and this scanner reported a twenty-
         # character AWS key written as a fixture in the port's own secret_rules.rs as being in
