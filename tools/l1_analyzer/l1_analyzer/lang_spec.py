@@ -914,7 +914,9 @@ LANG_SPEC: dict[str, LangSpec] = {
         "key_removal_types": ("unary_expression",),
         "cond_at_index": {},
         "writing_builtins": frozenset(),
-        "iterate_types": {},
+        # `for (x of S)` and `for (k in S)` are one node, and `right` holds what is walked
+        # whichever the operator: values or keys, the walk reads the cell set. Go's range row.
+        "iterate_types": {"for_in_statement": "right"},
         "local_binding": {"variable_declarator": ("name", "value")},
         "switch_types": {"switch_statement": ("value", "switch_case")},
         "immutable_modifiers": frozenset({"const"}),
