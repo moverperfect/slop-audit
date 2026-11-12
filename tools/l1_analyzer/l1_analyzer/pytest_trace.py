@@ -66,10 +66,16 @@ def _run_untrusted(command: list[str], cwd: Path, env: dict[str, str], timeout_s
     # code being audited. See l1_analyzer.environment for what passes and why.
     full_env = child_environment(os.environ, env)
     process = subprocess.Popen(
-        command,
+        _launchable(command, full_env),
         cwd=str(cwd),
         env=full_env,
-        text=True,
+        # UTF-8, not the locale. `text=True` decoded with the console's code page, which is
+        # cp1252 on a Windows machine, and vitest prints its marks in UTF-8: a byte cp1252
+        # leaves undefined raised inside the reader thread and the run's whole output was lost.
+        # Replacement rather than strict, because one undecodable byte in a stranger's output
+        # is not a reason to lose the run, and the same bytes now read the same on every machine.
+        encoding="utf-8",
+        errors="replace",
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         start_new_session=True,
@@ -78,13 +84,59 @@ def _run_untrusted(command: list[str], cwd: Path, env: dict[str, str], timeout_s
         stdout, stderr = process.communicate(timeout=timeout_seconds)
         return subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
     except subprocess.TimeoutExpired:
-        try:
-            os.killpg(process.pid, signal.SIGKILL)
-        # honest-code-allow: L1.21.8 - the process was already gone, which is the state the kill was for. There is no failure here to report to anyone
-        except ProcessLookupError:
-            pass
+        _kill_the_tree(process)
         stdout, stderr = process.communicate()
         return subprocess.CompletedProcess(command, 124, stdout or "", (stderr or "") + "\ntimed out")
+
+
+@boundary
+def _launchable(command: list[str], env: dict[str, str]) -> list[str]:
+    """The command with its program spelled so the platform can start it.
+
+    WINDOWS ONLY, and unchanged everywhere else. npm installs `npx` as `npx.cmd`, and
+    CreateProcess does not try PATHEXT the way a shell does, so a bare `npx` raised
+    FileNotFoundError and took the whole audit with it, not just the reading. The name is
+    resolved against the PATH the suite will be given, which is the PATH a shell would have
+    searched. A name that resolves to nothing is passed through as written, so a missing
+    program still fails exactly the way it always has.
+
+    A .cmd runs under cmd.exe, which parses its arguments by its own rules. The arguments here
+    are this package's own flags, seeds and temp paths, plus the audited project's own test
+    command, which is already code this function exists to run."""
+    if sys.platform != "win32" or not command:
+        return command
+    found = shutil.which(command[0], path=env.get("PATH"))
+    return [found, *command[1:]] if found else command
+
+
+@boundary
+def _kill_the_tree(process: subprocess.Popen[str]) -> None:
+    """Stop a timed-out suite and everything it started.
+
+    On unix the child leads its own process group (`start_new_session`) and the group is
+    killed. Windows has no `os.killpg`: calling it raised AttributeError, so the one path
+    written for a runaway suite was the path that ended the audit. There `taskkill /T` walks
+    the tree by parent process, which reaches a runner's workers; killing the runner alone
+    would leave a worker holding the output pipe and the read after this would wait for it.
+
+    What neither reaches, said plainly: a process that detached itself from the tree before
+    the timeout, which on unix means one that left the group.
+
+    Branched on `sys.platform` rather than `os.name` because the type checker narrows on the
+    first: checked on Windows, the unix half is then unreachable rather than an error about a
+    function the platform does not have."""
+    if sys.platform == "win32":
+        taskkill = Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32" / "taskkill.exe"
+        subprocess.run([str(taskkill), "/F", "/T", "/PID", str(process.pid)],
+                       capture_output=True, check=False)
+        # The runner itself, whatever taskkill managed: this one handle is always ours to kill.
+        process.kill()
+        return
+    try:
+        os.killpg(process.pid, signal.SIGKILL)
+    # honest-code-allow: L1.21.8 - the process was already gone, which is the state the kill was for. There is no failure here to report to anyone
+    except ProcessLookupError:
+        pass
 
 
 def _interpreter(python_executable: str | None) -> str:

@@ -25,6 +25,20 @@ Feature: pytest_trace — running a Python repository's own test suite to measur
     And a command that outruns the limit has its whole process group killed, and comes back as exit code 124 with a timed-out note appended to the error stream
     But the command is treated as untrusted throughout, so nothing it starts can outlive the limit
 
+  Scenario: _launchable spells a command's program so the platform can start it
+    Given a command whose program is written bare, and the PATH the suite will be given
+    When _launchable prepares it on Windows
+    Then a program npm installed as a .cmd script, such as npx, is resolved to its full path the way a shell would find it
+    And on every other platform the command comes back exactly as written
+    But a name that resolves to nothing is passed through unchanged, so a missing program fails the way it always has
+
+  Scenario: _kill_the_tree stops a timed-out suite and everything it started
+    Given a suite that outran its time limit
+    When _kill_the_tree is called on it
+    Then on unix its whole process group is killed, and on Windows taskkill ends the runner and every process under it
+    And a runner's workers are reached as well, so none is left holding the output pipe open
+    But a process that detached itself from the tree before the limit is not reached, and the docstring says so
+
   Scenario: _interpreter resolves a bare interpreter override
     Given the path of an interpreter the caller named, or nothing
     When _interpreter is asked which interpreter to use
