@@ -131,8 +131,22 @@ def _js_binds_something_writable(declarator: Node) -> bool:
 
     An over-approximation, deliberately, and in the safe direction. `new Date()` is rarely
     state anybody cares about and is counted anyway, because the direction that under-counts
-    is the direction that reports clean."""
+    is the direction that reports clean.
+
+    TYPESCRIPT'S DECLARED TYPE IS READ, since 2026-11-12. `const X: ReadonlySet<string> =
+    new Set([...])` is the idiomatic constant table, and the checker refuses every write
+    through it the way a frozen object refuses one, so it is declined the way `Object.freeze`
+    is. The value is read through `as`, `satisfies`, `!` and parentheses, where a cast used to
+    hide it: `{} satisfies Record<string, number>` is the same writable object as `{}` and read
+    as nothing. Two casts do change the value and are declined: `as const`, and a cast to a
+    readonly type. See `_names_a_readonly_type` for which types those are."""
+    if _names_a_readonly_type(_field(declarator, "type")):
+        return False
     value = _field(declarator, "value")
+    while value is not None and value.type in _JS_TRANSPARENT:
+        if value.type == "as_expression" and _cast_makes_it_readonly(value):
+            return False
+        value = value.named_children[0] if value.named_children else None
     if value is None:
         return False
     if value.type in _JS_CONTAINERS:
@@ -142,6 +156,58 @@ def _js_binds_something_writable(declarator: Node) -> bool:
     if value.type == "call_expression":
         return _text(_field(value, "function")) != _JS_FREEZE
     return False
+
+
+# What TypeScript wraps around a value without changing the object underneath. The value is
+# the first named child of each. JavaScript has only the parentheses, which mean the same there.
+_JS_TRANSPARENT = frozenset({"parenthesized_expression", "as_expression", "satisfies_expression",
+                             "non_null_expression"})
+
+# The library types that leave out every method that writes. `ReadonlyArray<T>` is the long
+# spelling of `readonly T[]`, which the grammar gives a node of its own.
+_TS_READONLY_GENERICS = frozenset({"ReadonlySet", "ReadonlyMap", "ReadonlyArray"})
+
+# The containers whose writes are METHODS. `Readonly<T>` marks T's properties readonly and
+# leaves its methods callable, so `Readonly<Set<string>>` still has `add`.
+_TS_METHOD_WRITTEN = frozenset({"Set", "Map", "WeakSet", "WeakMap"})
+
+
+def _names_a_readonly_type(node: Node | None) -> bool:
+    """Whether a declared type withholds every write: `readonly T[]`, `ReadonlySet`,
+    `ReadonlyMap`, `ReadonlyArray`, or `Readonly<...>` around anything but a container whose
+    writes are methods.
+
+    Takes the declarator's `type` annotation or the type a cast names, so both read one rule.
+    Anything else answers no and the value decides, which is the counted direction: a readonly
+    spelling this does not know is read as writable rather than as clean."""
+    if node is not None and node.type == "type_annotation":
+        node = node.named_children[0] if node.named_children else None
+    if node is None:
+        return False
+    if node.type == "readonly_type":
+        return True
+    if node.type != "generic_type":
+        return False
+    name = _text(_field(node, "name"))
+    if name in _TS_READONLY_GENERICS:
+        return True
+    if name != "Readonly":
+        return False
+    arguments = _field(node, "type_arguments")
+    inner = arguments.named_children[0] if arguments is not None and arguments.named_children else None
+    held = _text(_field(inner, "name")) if inner is not None and inner.type == "generic_type" else _text(inner)
+    return held not in _TS_METHOD_WRITTEN
+
+
+def _cast_makes_it_readonly(cast: Node) -> bool:
+    """Whether an `as` cast leaves a value nothing can write through: `as const`, which makes
+    a literal readonly all the way down its own literal, or a cast to a readonly type.
+
+    `satisfies` is never one. It checks the value against a type and leaves the binding with the
+    value's own type, so `{} satisfies Readonly<R>` is as writable as `{}`."""
+    if any(child.type == "const" for child in cast.children):
+        return True
+    return _names_a_readonly_type(cast.named_children[-1] if len(cast.named_children) > 1 else None)
 
 
 def _js_module(root: Node, cfg: LangCfg) -> Cands:

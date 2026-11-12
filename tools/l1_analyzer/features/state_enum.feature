@@ -53,7 +53,21 @@ Feature: state_enum — which declarations the classifier's reader walks, and wh
     Then an object or array literal is writable, and so is anything a new expression or an ordinary call produced, because the name being fixed says nothing about the object
     And Object.freeze is the exception, being the one call in these languages that makes a value genuinely immutable and the idiomatic way to write a constant table
     And it over-approximates deliberately: a date object is rarely state anybody cares about and is counted anyway, because the direction that under-counts is the direction that reports clean
+    And a TypeScript constant declared with a readonly type, or cast to one, is declined the way a frozen value is, and the value is read through as, satisfies, non-null and parentheses rather than hidden behind them
     But a name bound once to a number holds nothing that can be written, and declining that is a reading rather than a gap
+
+  Scenario: _names_a_readonly_type decides whether a declared TypeScript type withholds every write
+    Given the type annotation on a declarator, or the type a cast names
+    When _names_a_readonly_type reads it
+    Then readonly T[], ReadonlySet, ReadonlyMap and ReadonlyArray withhold every write, and so does Readonly around an object, a record or an array
+    And Readonly around a Set, a Map or their weak forms does not, because their writes are methods and Readonly only marks properties
+    But any type it does not know answers no, so an unfamiliar readonly spelling is read as writable rather than as clean
+
+  Scenario: _cast_makes_it_readonly decides whether an as cast leaves a value nothing can write through
+    Given an as expression
+    When _cast_makes_it_readonly reads what it casts to
+    Then as const answers yes, and so does a cast to a type _names_a_readonly_type calls readonly
+    But a satisfies expression is never one, because it checks the value and leaves the binding with the value's own writable type
 
   Scenario: _js_module declines a constant scalar on the merits and admits the rest
     Given a parsed JavaScript or TypeScript file
