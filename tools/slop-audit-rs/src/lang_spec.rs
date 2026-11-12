@@ -227,7 +227,7 @@ pub const LANG_SPECS: &[LangSpec] = &[
         dispatch_methods: &[],
         elif_types: &[],
         empty_map_types: &[],
-        extra_bounded: &[],
+        extra_bounded: &["Boolean", "Number", "String", "decodeURI", "decodeURIComponent", "encodeURI", "encodeURIComponent", "parseFloat", "parseInt"],
         extra_test_positions: &[("ternary_expression", "field")],
         field_decl_types: &["field_definition"],
         flat_call: false,
@@ -280,7 +280,7 @@ pub const LANG_SPECS: &[LangSpec] = &[
         value_wrapper_types: &["unary_expression", "parenthesized_expression"],
         write_in_place_ops: &[("update_expression", &["++", "--"])],
         write_methods: &["add", "clear", "copyWithin", "fill", "push", "set", "sort", "unshift"],
-        writing_builtins: &[],
+        writing_builtins: &["clearInterval", "clearTimeout"],
     },
     LangSpec {
         key: "java",
@@ -843,7 +843,7 @@ pub const LANG_SPECS: &[LangSpec] = &[
         dispatch_methods: &[],
         elif_types: &[],
         empty_map_types: &[],
-        extra_bounded: &[],
+        extra_bounded: &["Boolean", "Number", "String", "decodeURI", "decodeURIComponent", "encodeURI", "encodeURIComponent", "parseFloat", "parseInt"],
         extra_test_positions: &[("ternary_expression", "field")],
         field_decl_types: &["public_field_definition"],
         flat_call: false,
@@ -896,7 +896,7 @@ pub const LANG_SPECS: &[LangSpec] = &[
         value_wrapper_types: &["unary_expression", "parenthesized_expression", "non_null_expression", "as_expression", "satisfies_expression"],
         write_in_place_ops: &[("update_expression", &["++", "--"])],
         write_methods: &["add", "clear", "copyWithin", "fill", "push", "set", "sort", "unshift"],
-        writing_builtins: &[],
+        writing_builtins: &["clearInterval", "clearTimeout"],
     },
 ];
 

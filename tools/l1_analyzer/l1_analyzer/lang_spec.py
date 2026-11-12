@@ -931,7 +931,8 @@ LANG_SPEC: dict[str, LangSpec] = {
         "out_argument_types": (),
         "key_removal_types": ("unary_expression",),
         "cond_at_index": {},
-        "writing_builtins": frozenset(),
+        # A timer cancelled through its handle: removed, and nothing returned. Go's `delete`.
+        "writing_builtins": frozenset({"clearTimeout", "clearInterval"}),
         # `for (x of S)` and `for (k in S)` are one node, and `right` holds what is walked
         # whichever the operator: values or keys, the walk reads the cell set. Go's range row.
         "iterate_types": {"for_in_statement": "right"},
@@ -1043,8 +1044,12 @@ LANG_SPEC: dict[str, LangSpec] = {
         "call_recv": "",
         # No dynamic-dispatch spelling in this grammar.
         "dispatch_methods": frozenset(),
-        # No language builtins beyond the shared bounded set.
-        "extra_bounded": frozenset(),
+        # The conversions. Each reads its argument and returns a new value without writing
+        # it, so the result flows on, as Python's `len` and `bool` do. Python files `str` as
+        # an effect instead; following the result can only find more decisions, not fewer.
+        "extra_bounded": frozenset({"String", "Number", "Boolean", "parseInt", "parseFloat",
+                                    "encodeURI", "encodeURIComponent",
+                                    "decodeURI", "decodeURIComponent"}),
         # State does not span methods by receiver type here.
         "scope_by_receiver": False,
     },
