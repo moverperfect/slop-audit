@@ -459,6 +459,15 @@ def _member_reach(value: Node, parent: Node, sp: LangSpec, closed_sets: dict[str
         return _keyed_read(_first_arg(gp, sp), sp, cells)
     if called:
         return _flow(gp, sp, closed_sets, cells, depth)   # result flows on (.clone(), .len(), an accessor)
+    # A PROPERTY STORED ONTO THE VALUE: `S.attr = v`. It is `S[k] = v` with a fixed key, and
+    # in JavaScript it is literally `S["attr"] = v`, which has always been a write. Followed
+    # on as a value it reached the left side of an assignment, where no row reads anything,
+    # and the state went silent. A conditional store, `S.attr ??= v`, reads whether the
+    # property is there before it writes, which is the presence split `S[k] ??= v` gets.
+    if _is_lvalue(parent, sp):
+        if _reads_its_own_target(value, sp):
+            return _categorize_read(value, sp, closed_sets, cells)
+        return state_partition.write()
     return _flow(parent, sp, closed_sets, cells, depth)   # plain field access: self.x.y
 
 
