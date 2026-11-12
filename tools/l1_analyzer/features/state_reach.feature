@@ -106,6 +106,19 @@ Feature: state_reach — how one reference to a piece of state reaches a decisio
     And an operand its language declares unread, such as a sizeof or a typeof, reaches no decision at all, because those ask about the type at compile time and never look at the value
     But when every row declines it returns unmeasured rather than output, because output is a verdict and the reader has not earned one
 
+  Scenario: _held follows a value an object or array literal holds, or names the alias it went under
+    Given a value held by a literal, as an element, a property value or a spread
+    When _held reads where the literal goes after reading through parentheses and casts
+    Then returned, discarded, stored or handed to a call, the literal meets the rows the value itself would meet there, because it holds the value by reference
+    And an index into the literal lets the chosen cell flow on, so an open key on the literal is never read as an open key on the state
+    But a literal bound to a name inside a function, or walked by a loop, is reported as a mutable alias rather than followed, because the state is now a field of something the walk does not track
+
+  Scenario: _enclosing_function finds the function a node sits in
+    Given a node in a parse tree
+    When _enclosing_function climbs its ancestors
+    Then it returns the nearest function, by the language's own function node types
+    But at module scope it returns nothing
+
   Scenario: _is_call_target decides whether a reference supplies what runs at a call site
     Given a reference and the language spec
     When _is_call_target checks that the reference is the callee of the call above it

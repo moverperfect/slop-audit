@@ -621,6 +621,13 @@ def _flow(node: Node | None, sp: LangSpec, closed_sets: dict[str, int | None], c
     choices = sp["choice_types"].get(parent.type)
     if choices is not None and any(_same(_field(parent, f), node) for f in choices):
         return _flow(parent, sp, closed_sets, cells, depth)
+    # A VALUE HELD BY A LITERAL: `[S]`, `{ a: S }`, `{ ...S }`. See _held for where it goes.
+    entry = sp["holding_entry_types"].get(parent.type)
+    if (entry is not None and _same(_field(parent, entry), node)
+            and parent.parent is not None and parent.parent.type in sp["holding_types"]):
+        return _held(parent.parent, sp, closed_sets, cells, depth)
+    if parent.type in sp["holding_types"]:
+        return _held(parent, sp, closed_sets, cells, depth)
     # A transparent wrapper, EXCEPT where the operator consumes rather than wraps. Go spells
     # a channel receive `<-ch`, which is a unary_expression exactly as `-x` is, and
     # unary_expression is on the wrapper list. So a receive read as the channel flowing on
@@ -704,6 +711,55 @@ def _flow(node: Node | None, sp: LangSpec, closed_sets: dict[str, int | None], c
     # handler is handed two node types and nothing else, so it has no verdict available to
     # reach for; see state_partition.unmeasured for why that placement is the point.
     return state_partition.unmeasured(node.type, parent.type)
+
+
+def _held(literal: Node, sp: LangSpec, closed_sets: dict[str, int | None], cells: int | None,
+          depth: int) -> Reach:
+    """Where a value goes once a literal holds it: `[S]`, `{ a: S }`, `{ ...S }`.
+
+    A literal does not copy what it holds. `{ a: S }` holds a REFERENCE to S, and a spread's
+    elements are the same objects, so whatever reaches the literal reaches the state. The
+    reading continues from the literal, and where the literal then goes decides it by the rows
+    the value itself would meet there: returned, discarded or stored is output; handed to a
+    function is that call's reading; a method taken off it is the chain rule.
+
+    Two places are answered here instead, because the rows would answer them wrongly.
+
+    INDEXED, the cell chosen flows on. `({ a: S, b: T })[k]` picks a cell of the LITERAL, and
+    the open-key row would read that as an unbounded read of S, an accusation S did not earn.
+
+    UNDER ANOTHER NAME inside a function, `const o = { a: S }`, or walked by a loop, the walk
+    stops and says the state is held under a name it does not follow: a mutable alias. The
+    state is now `o.a` or the loop variable. Following the local would charge the state with
+    every decision taken on the container's other fields, and a write through `o.a` would
+    reach the state where no rule about its own references can see it. At module scope the
+    local-binding row already answers, as it does for `const B = A`: the binding is state of
+    its own and is judged as such.
+
+    Read through identity-preserving wrappers first, `(...)`, `x!`, `x as T`, so a parenthesis
+    cannot move a literal out from under the two rows above."""
+    outer = literal
+    while outer.parent is not None and outer.parent.type in sp["value_wrapper_types"]:
+        outer = outer.parent
+    parent = outer.parent
+    if parent is None:
+        return state_partition.output()
+    if parent.type in sp["subscript_types"] and _same(_sub_collection(parent, sp), outer):
+        return _flow(parent, sp, closed_sets, cells, depth)
+    walked = sp["iterate_types"].get(parent.type)
+    named_in_a_function = (_local_binding_name(outer, sp) is not None
+                           and _enclosing_function(outer, sp) is not None)
+    if named_in_a_function or (walked is not None and _same(_field(parent, walked), outer)):
+        return state_partition.undecided(state_partition.MUTABLE_ALIAS)
+    return _flow(outer, sp, closed_sets, cells, depth)
+
+
+def _enclosing_function(node: Node, sp: LangSpec) -> Node | None:
+    """The function a node sits in, or None at module scope."""
+    scope = node.parent
+    while scope is not None and scope.type not in sp["func_types"]:
+        scope = scope.parent
+    return scope
 
 
 def _is_call_target(ref: Node, sp: LangSpec) -> bool:

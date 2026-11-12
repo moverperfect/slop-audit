@@ -58,6 +58,12 @@ class LangSpec(TypedDict, total=False):
     # the same object, while the node's condition keeps its split in `branch_types`, which is
     # why this is not a pass-through: the condition must never pass through.
     choice_types: dict[str, tuple[str, ...]]
+    # The literals that HOLD a value rather than copying it, `[S]` and `{...S}`, and the
+    # entries of one that hand it a value, as {entry type: the field holding the value}.
+    # A held value is a reference: what reaches the literal reaches the state, and a write
+    # through the literal's slot writes the state. See state_reach._held.
+    holding_types: tuple[str, ...]
+    holding_entry_types: dict[str, str]
     local_binding: dict[str, tuple[str, str | None]]
     # A match or switch, as {node type: (subject field, arm type)}. Two readers want it: the
     # state classifier, which has read it since it was written, and clause 1, for which a
@@ -609,6 +615,8 @@ LANG_SPEC: dict[str, LangSpec] = {
         # construct still unread today, which is its own small piece of work.
         "iterate_types": {},
         "choice_types": {},
+        "holding_types": (),
+        "holding_entry_types": {},
         "local_binding": {"assignment": ("left", "right")},
         "switch_types": {"match_statement": ("subject", "case_clause")},
         "immutable_modifiers": frozenset(),
@@ -925,6 +933,10 @@ LANG_SPEC: dict[str, LangSpec] = {
         "iterate_types": {"for_in_statement": "right"},
         # `c ? S : T` evaluates to S itself. The condition is a split, in branch_types.
         "choice_types": {"ternary_expression": ("consequence", "alternative")},
+        # `[S]` and `{ a: S }` hold S by reference; a spread lands its elements in the
+        # literal around it, and is a pass-through to get there.
+        "holding_types": ("array", "object"),
+        "holding_entry_types": {"pair": "value"},
         "local_binding": {"variable_declarator": ("name", "value")},
         "switch_types": {"switch_statement": ("value", "switch_case")},
         "immutable_modifiers": frozenset({"const"}),
@@ -939,8 +951,10 @@ LANG_SPEC: dict[str, LangSpec] = {
         # A template literal is concatenation with other punctuation, and arithmetic already
         # lets a derived value flow on: the substitution reads the value and the template
         # string carries what it derived. Whatever receives the string decides the reading.
+        # A spread hands its elements on unchanged, to a call's arguments or to the literal
+        # around it, which is where the holding row picks them up.
         "passthrough_types": ("parenthesized_expression", "unary_expression",
-                              "template_substitution", "template_string"),
+                              "template_substitution", "template_string", "spread_element"),
         "comparison_types": ("binary_expression",),
         "membership": "binary_in",
         "this_idents": frozenset({"this"}),
@@ -1083,6 +1097,8 @@ LANG_SPEC: dict[str, LangSpec] = {
         "writing_builtins": frozenset(),
         "iterate_types": {},
         "choice_types": {},
+        "holding_types": (),
+        "holding_entry_types": {},
         "local_binding": {"variable_declarator": ("name", "value")},
         "switch_types": {"switch_expression": ("condition", "switch_block_statement_group")},
         "immutable_modifiers": frozenset({"final"}),
@@ -1235,6 +1251,8 @@ LANG_SPEC: dict[str, LangSpec] = {
         "writing_builtins": frozenset(),
         "iterate_types": {},
         "choice_types": {},
+        "holding_types": (),
+        "holding_entry_types": {},
         "local_binding": {"variable_declarator": ("name", None)},
         "switch_types": {"switch_statement": ("value", "switch_section")},
         "immutable_modifiers": frozenset({"const", "readonly"}),
@@ -1402,6 +1420,8 @@ LANG_SPEC: dict[str, LangSpec] = {
         "writing_builtins": frozenset(),
         "iterate_types": {"for_expression": "value"},
         "choice_types": {},
+        "holding_types": (),
+        "holding_entry_types": {},
         "local_binding": {"let_declaration": ("pattern", "value")},
         "switch_types": {"match_expression": ("value", "match_arm")},
         "immutable_modifiers": frozenset({"const", "static"}),
@@ -1574,6 +1594,8 @@ LANG_SPEC: dict[str, LangSpec] = {
         "writing_builtins": frozenset(),
         "iterate_types": {},
         "choice_types": {},
+        "holding_types": (),
+        "holding_entry_types": {},
         "local_binding": {"assignment": ("left", "right")},
         "switch_types": {"case": ("value", "when")},
         "immutable_modifiers": frozenset(),
@@ -1732,6 +1754,8 @@ LANG_SPEC: dict[str, LangSpec] = {
         "writing_builtins": frozenset(),
         "iterate_types": {},
         "choice_types": {},
+        "holding_types": (),
+        "holding_entry_types": {},
         "local_binding": {"init_declarator": ("declarator", "value")},
         "switch_types": {"switch_statement": ("condition", "case_statement")},
         "immutable_modifiers": frozenset({"const"}),
@@ -1905,6 +1929,8 @@ LANG_SPEC: dict[str, LangSpec] = {
         "writing_builtins": frozenset({"delete", "clear"}),
         "iterate_types": {"range_clause": "right"},
         "choice_types": {},
+        "holding_types": (),
+        "holding_entry_types": {},
         "local_binding": {"short_var_declaration": ("left", "right")},
         "switch_types": {"expression_switch_statement": ("value", "expression_case")},
         "immutable_modifiers": frozenset({"const"}),
@@ -2035,7 +2061,7 @@ _TYPESCRIPT["immutable_modifiers"] = frozenset({"const", "readonly"})
 # `x!` and `x as T` are TypeScript-only wrappers, and both are transparent: the value under
 # them is the value. A walk that stopped at either would lose the operand.
 _TYPESCRIPT["passthrough_types"] = ("parenthesized_expression", "unary_expression",
-                                    "template_substitution", "template_string",
+                                    "template_substitution", "template_string", "spread_element",
                                     "non_null_expression", "as_expression")
 _TYPESCRIPT["value_wrapper_types"] = ("unary_expression", "parenthesized_expression",
                                       "non_null_expression", "as_expression")
