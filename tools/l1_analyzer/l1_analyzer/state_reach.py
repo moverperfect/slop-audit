@@ -605,6 +605,13 @@ def _flow(node: Node | None, sp: LangSpec, closed_sets: dict[str, int | None], c
     if parent.type in sp["unread_operand_types"]:
         return state_partition.output()
 
+    # A VALUE CHOSEN, NOT TESTED: `c ? S : T` evaluates to S itself, the same object, so S
+    # flows on as the ternary's value exactly as it would through a parenthesis. Only the
+    # choice fields: the condition is the ternary's own split and is read by the branch row
+    # below, which is why this is a row of its own rather than a pass-through.
+    choices = sp["choice_types"].get(parent.type)
+    if choices is not None and any(_same(_field(parent, f), node) for f in choices):
+        return _flow(parent, sp, closed_sets, cells, depth)
     # A transparent wrapper, EXCEPT where the operator consumes rather than wraps. Go spells
     # a channel receive `<-ch`, which is a unary_expression exactly as `-x` is, and
     # unary_expression is on the wrapper list. So a receive read as the channel flowing on
