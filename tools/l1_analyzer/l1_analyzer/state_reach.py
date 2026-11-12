@@ -484,6 +484,11 @@ def _flow(node: Node | None, sp: LangSpec, closed_sets: dict[str, int | None], c
         return state_partition.output()
     if parent.type in sp["return_types"]:
         return state_partition.output()
+    # A FUNCTION WHOSE BODY IS THIS EXPRESSION returns it: `() => x` is `() => { return x; }`,
+    # and the second spelling was the only one read.
+    body = sp["expression_body_types"].get(parent.type)
+    if body is not None and _same(_field(parent, body), node):
+        return state_partition.output()
     # The value comes to rest. Either the language DISCARDS it - `app.add_middleware(x)` as a
     # statement, whose result nobody reads - or the language hands it back with no keyword,
     # which is what the tail expression of a Ruby body and of a Rust block is. Both reach no

@@ -64,6 +64,9 @@ class LangSpec(TypedDict, total=False):
     # through the literal's slot writes the state. See state_reach._held.
     holding_types: tuple[str, ...]
     holding_entry_types: dict[str, str]
+    # A function whose body is a bare expression returns it, as {node type: body field}.
+    # The field, not the node: JavaScript's arrow also hangs a lone parameter off itself.
+    expression_body_types: dict[str, str]
     local_binding: dict[str, tuple[str, str | None]]
     # A match or switch, as {node type: (subject field, arm type)}. Two readers want it: the
     # state classifier, which has read it since it was written, and clause 1, for which a
@@ -617,6 +620,7 @@ LANG_SPEC: dict[str, LangSpec] = {
         "choice_types": {},
         "holding_types": (),
         "holding_entry_types": {},
+        "expression_body_types": {},
         "local_binding": {"assignment": ("left", "right")},
         "switch_types": {"match_statement": ("subject", "case_clause")},
         "immutable_modifiers": frozenset(),
@@ -937,6 +941,9 @@ LANG_SPEC: dict[str, LangSpec] = {
         # literal around it, and is a pass-through to get there.
         "holding_types": ("array", "object"),
         "holding_entry_types": {"pair": "value"},
+        # `() => x` returns x. C# spells the same thing as an arrow_expression_clause, which
+        # sits in its return row; here the arrow node also holds the parameter, so the field.
+        "expression_body_types": {"arrow_function": "body"},
         "local_binding": {"variable_declarator": ("name", "value")},
         "switch_types": {"switch_statement": ("value", "switch_case")},
         "immutable_modifiers": frozenset({"const"}),
@@ -1099,6 +1106,7 @@ LANG_SPEC: dict[str, LangSpec] = {
         "choice_types": {},
         "holding_types": (),
         "holding_entry_types": {},
+        "expression_body_types": {},
         "local_binding": {"variable_declarator": ("name", "value")},
         "switch_types": {"switch_expression": ("condition", "switch_block_statement_group")},
         "immutable_modifiers": frozenset({"final"}),
@@ -1253,6 +1261,7 @@ LANG_SPEC: dict[str, LangSpec] = {
         "choice_types": {},
         "holding_types": (),
         "holding_entry_types": {},
+        "expression_body_types": {},
         "local_binding": {"variable_declarator": ("name", None)},
         "switch_types": {"switch_statement": ("value", "switch_section")},
         "immutable_modifiers": frozenset({"const", "readonly"}),
@@ -1422,6 +1431,7 @@ LANG_SPEC: dict[str, LangSpec] = {
         "choice_types": {},
         "holding_types": (),
         "holding_entry_types": {},
+        "expression_body_types": {},
         "local_binding": {"let_declaration": ("pattern", "value")},
         "switch_types": {"match_expression": ("value", "match_arm")},
         "immutable_modifiers": frozenset({"const", "static"}),
@@ -1596,6 +1606,7 @@ LANG_SPEC: dict[str, LangSpec] = {
         "choice_types": {},
         "holding_types": (),
         "holding_entry_types": {},
+        "expression_body_types": {},
         "local_binding": {"assignment": ("left", "right")},
         "switch_types": {"case": ("value", "when")},
         "immutable_modifiers": frozenset(),
@@ -1756,6 +1767,7 @@ LANG_SPEC: dict[str, LangSpec] = {
         "choice_types": {},
         "holding_types": (),
         "holding_entry_types": {},
+        "expression_body_types": {},
         "local_binding": {"init_declarator": ("declarator", "value")},
         "switch_types": {"switch_statement": ("condition", "case_statement")},
         "immutable_modifiers": frozenset({"const"}),
@@ -1931,6 +1943,7 @@ LANG_SPEC: dict[str, LangSpec] = {
         "choice_types": {},
         "holding_types": (),
         "holding_entry_types": {},
+        "expression_body_types": {},
         "local_binding": {"short_var_declaration": ("left", "right")},
         "switch_types": {"expression_switch_statement": ("value", "expression_case")},
         "immutable_modifiers": frozenset({"const"}),
