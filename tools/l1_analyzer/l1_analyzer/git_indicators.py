@@ -17,14 +17,17 @@ read as a repository that measured terribly.
 
 from __future__ import annotations
 
+import re
 import subprocess
 from pathlib import Path
 from typing import TYPE_CHECKING
+from urllib.parse import unquote
 
 from l1_analyzer.incomplete import ratio
 from l1_analyzer.indicators import (
     _measure,
     _read_text_files,
+    _run_external,
     _with_skipped,
     band,
 )
@@ -33,6 +36,36 @@ from l1_analyzer.scope import _TEST_STEM_SUFFIXES, WHOLE_REPO
 
 if TYPE_CHECKING:
     from l1_analyzer.panel import Panel
+
+
+def repository_name(repo: Path) -> str:
+    """The name a report about `repo` goes out under.
+
+    It was the checkout's directory name, and a git worktree's directory is named by whatever
+    made it: an Astro site audited on 2026-11-12 came back as `t3-c14f53ce.md`, headed "Slop
+    Audit — t3-c14f53ce". Audited as `.`, the directory name is empty.
+
+    The repository names itself in its `origin` remote, so that is read first, but only when
+    `repo` is the top of the working copy: a subdirectory audited on its own is not the
+    repository and does not borrow its name. Otherwise the directory's own name, resolved, so
+    `.` has one. The same checkout gives the same name every time."""
+    directory = repo.resolve()
+    top = _run_external(["git", "rev-parse", "--show-toplevel"], repo)
+    origin = _run_external(["git", "remote", "get-url", "origin"], repo)
+    whole = top["ran"] and top["status"] == 0 and Path(top["output"].strip()).resolve() == directory
+    named = name_from_remote(origin["output"]) if whole and origin["ran"] and origin["status"] == 0 else ""
+    return named or directory.name or str(repo)
+
+
+def name_from_remote(url: str) -> str:
+    """A repository's name from its remote URL: the last segment, URL-decoded, `.git` dropped.
+
+    Every spelling git accepts ends in the name: https and ssh URLs, the scp form
+    `git@host:owner/name.git`, and a local path with either separator. Azure DevOps encodes a
+    space in a project or repository name as `%20`, which a file name should not carry."""
+    last = re.split(r"[/\\:]", url.strip().rstrip("/\\"))[-1]
+    name = unquote(last)
+    return name[:-4] if name.lower().endswith(".git") else name
 
 
 def _classify_file(path: str) -> str:

@@ -26,6 +26,19 @@ Feature: git_indicators — L1.1 through L1.8, read from git log alone
 
   # The three commit-mix percentages divide by every commit, including the ones classified as neither doc nor code.
 
+  Scenario: repository_name gives the name a report about a repository goes out under
+    Given the directory being audited
+    When repository_name asks git for the top of the working copy and the origin remote's URL
+    Then an audit of the whole working copy is named after the repository its origin names, so a git worktree's arbitrary folder name never heads a report
+    And a subdirectory audited on its own keeps its own name, because it is not the repository
+    But with no remote or no git it is the directory's own name, resolved so that an audit of . still has one
+
+  Scenario: name_from_remote reads a repository's name out of its remote URL
+    Given a remote URL in any spelling git accepts, https, ssh, the scp form or a local path
+    When name_from_remote takes its last segment
+    Then it returns that segment URL-decoded, with a trailing .git dropped, so a space Azure DevOps wrote as %20 reads as a space
+    But a trailing slash or backslash is not taken for an empty last segment
+
   Scenario: compute_git_indicators reads the commit history into the first eight indicators
     Given a repository and the optional earliest and latest dates
     When compute_git_indicators reads the commit log with per-file line counts and closes each commit as it goes

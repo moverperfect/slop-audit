@@ -1047,7 +1047,8 @@ def main(argv: list[str] | None) -> int:
     # site never executes the repo's code and says so, while the CLI runs the test suite by
     # default, so ran_tests carries that fact into the card (measured L1.19 coverage + L1.20
     # determinism, and a footer that says the tests were run). --no-exec flips it back.
-    slug = args.repo.name or str(args.repo)
+    # Named after the repository rather than its folder. See git_indicators.repository_name.
+    slug = git_indicators.repository_name(args.repo)
     ran_tests = not args.no_exec
     # The card is the last boundary, and a refusal has to reach the reader as a refusal. It
     # must not become a grade, a percentage or a headline, because the whole reason the
