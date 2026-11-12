@@ -121,7 +121,7 @@ Feature: scope — deciding which files are the code under audit and which are s
 
   Scenario: _is_generated decides whether a file's own header marks it as machine-generated
     Given a path
-    When _is_generated offers the header that boundary_in_file_head read to the generated-marker table: the machine-readable generated marker, the Go generated banner, and the protocol-buffer banner
+    When _is_generated offers the header that boundary_in_file_head read to the generated-marker table: the machine-readable generated marker, the Go generated banner, the protocol-buffer banner, and the signatures Wrangler and Kontent.ai's model generator write into TypeScript
     Then it answers yes when a toolchain declared itself the author of the file
     And only the header is offered, so a hand-written file mentioning the same phrase further down is unaffected
     But the reading and the judging are each done by one function it calls, so neither has a second owner here
