@@ -39,6 +39,13 @@ Feature: pytest_trace — running a Python repository's own test suite to measur
     And a runner's workers are reached as well, so none is left holding the output pipe open
     But a process that detached itself from the tree before the limit is not reached, and the docstring says so
 
+  Scenario: without_escapes removes a runner's terminal colour codes from its output
+    Given the output of a runner that coloured it, as vitest does on Windows into a pipe
+    When without_escapes is applied before a line of it is matched or quoted
+    Then the colour codes are gone and the text is the text the runner would have printed without colour
+    And every line this package quotes from a runner's output is read through it, so a published sentence never carries an escape code
+    But the harnesses still ask the runner for no colour, and this is what holds when a runner does not listen
+
   Scenario: _interpreter resolves a bare interpreter override
     Given the path of an interpreter the caller named, or nothing
     When _interpreter is asked which interpreter to use

@@ -390,10 +390,25 @@ def coverage_verdict(*, covered: int | None, total: int | None, returncode: int,
 
 
 def _first_line(text: str) -> str:
-    for line in (text or "").splitlines():
+    for line in without_escapes(text or "").splitlines():
         if line.strip():
             return line.strip()[:200]
     return "no output"
+
+
+# A terminal control sequence: ESC, `[`, parameters, and the letter that ends it. Colour is
+# the one runners print, and it is the only kind this needs to remove.
+_ESCAPE = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")
+
+
+def without_escapes(text: str) -> str:
+    """The text a runner printed, without its terminal colour codes.
+
+    A runner's output is quoted into published details, and a quoted line went out on
+    2026-11-12 as `\\x1b[32m✓\\x1b[39m \\x1b[30m\\x1b[42m unit ...`: vitest colours on Windows
+    whether or not a terminal is attached. The harnesses ask for no colour, and this is what
+    keeps the sentence clean when a runner does not listen."""
+    return _ESCAPE.sub("", text)
 
 
 # ---------------------------------------------------------------------------

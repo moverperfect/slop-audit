@@ -41,7 +41,16 @@ from l1_analyzer.pytest_trace import (
     _run_untrusted,
     coverage_verdict,
     determinism_tally,
+    without_escapes,
 )
+
+# What a suite run is handed on top of the shared allowlist: a request for no colour.
+# vitest's colour library turns colour on unconditionally on Windows, pipe or terminal, so the
+# same suite printed different bytes there than in a Linux container, and a Windows run's FAIL
+# line began with an escape code. NO_COLOR is the convention both runners honour, it carries
+# nothing about this machine, and it is the caller's own word for these runs, which is what
+# `extra` in l1_analyzer.environment is for.
+_RUN_ENVIRONMENT = {"NO_COLOR": "1"}
 
 # The default `npm init` test script; a real command, but it runs no tests.
 _NO_TEST_SCRIPT = "no test specified"
@@ -341,7 +350,7 @@ def decision_space_coverage(repo: Path, timeout_seconds: float, runtime_override
         summary = reports / "coverage-summary.json"
         run = _run_untrusted(
             _wrap(repo, build(reports, Path(directory) / "tmp", test_cmd)),
-            cwd=repo, env={}, timeout_seconds=timeout_seconds,
+            cwd=repo, env=_RUN_ENVIRONMENT, timeout_seconds=timeout_seconds,
         )
         runtime = _runtime_name(repo, timeout_seconds)
         if run.returncode == 124:
@@ -418,8 +427,12 @@ def _failure_summary(output: str) -> str:
     summary count; then any line that mentions a failure and is not a passing test's. This read
     the first line containing "fail" until 2026-11-12, and vitest's verbose reporter prints every
     passing test by name: on an Astro site it quoted a test called "returns the failed state"
-    that had passed, and never named the one that timed out."""
-    lines = [line.strip() for line in output.splitlines()]
+    that had passed, and never named the one that timed out.
+
+    Read without colour codes. vitest colours on Windows into a pipe, so its FAIL line began
+    with an escape code and no rule here matched it, and the fallback published a passing
+    line with the codes still in it."""
+    lines = [line.strip() for line in without_escapes(output).splitlines()]
     for wanted in (lambda s: s.startswith(_FAIL_LINE),
                    lambda s: s.startswith(_SUMMARY_LINES) and "fail" in s.lower(),
                    lambda s: "fail" in s.lower() and not s.startswith(_PASSED_LINE)):
@@ -486,8 +499,9 @@ def test_determinism(repo: Path, runs: int, timeout_seconds: float, runtime_over
     runtime = _runtime_name(repo, timeout_seconds)
     per_seed: list[tuple[int, str]] = []
     for seed in range(1, runs + 1):
-        run = _run_untrusted(_wrap(repo, builder(seed)), cwd=repo, env={}, timeout_seconds=timeout_seconds)
-        output = (run.stdout or "") + (run.stderr or "")
+        run = _run_untrusted(_wrap(repo, builder(seed)), cwd=repo, env=_RUN_ENVIRONMENT,
+                             timeout_seconds=timeout_seconds)
+        output = without_escapes((run.stdout or "") + (run.stderr or ""))
         per_seed.append((run.returncode, output))
         # A run that timed out or never executed a suite ends the measurement, and nothing a
         # later seed could do would change that, so the remaining seeds are not spent. The
