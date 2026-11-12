@@ -6,10 +6,14 @@ dead code, duplication, secrets, type escapes, whitespace, god files and both st
 first. On an Astro site on Windows that was about seventy-eight minutes for a question whose
 answer was two suite runs. The rows nobody asked for were then printed as well.
 
-Each source indicator now runs only when its number was asked for. L1.18's refinements, the
-state classifier, the path cover, the thread surface and the absolute-path check, travel with
-18, which is how `--no-state-bounds` already groups them. Asking for nothing in particular runs
-everything, in the order it always ran, so a full panel is unchanged.
+Each source indicator now runs only when its number was asked for. The refinements, the state
+classifier, the path cover, the thread surface and the absolute-path check, carry no number of
+their own: they run whenever any static reading is asked for, and are skipped only when the
+selection is the runtime pair alone. Asking for nothing in particular runs everything, in the
+order it always ran, so a full panel is unchanged.
+
+Every row is written by the line that computes it, so a row that is absent is a reading that was
+not taken. The tests read the panel rather than replacing anything inside the package.
 """
 
 from __future__ import annotations
@@ -19,7 +23,9 @@ import subprocess
 from pathlib import Path
 
 import pytest
-from l1_analyzer import cli, dead_code, indicators, state_bounds
+from l1_analyzer import cli, indicators
+
+_REFINEMENTS = ["L1.18b", "path_cover", "thread_surface", "absolute_paths"]
 
 
 @pytest.fixture
@@ -29,37 +35,28 @@ def small_repo(tmp_path: Path) -> Path:
     return tmp_path
 
 
-def _refuse(*_args, **_kwargs):
-    raise AssertionError("a reading nobody asked for was taken")
+def _panel(repo: Path, selected: frozenset[str] | None) -> list[str]:
+    panel = indicators.compute_source_indicators(
+        repo, lang="python", exec_tests=False, timeout_seconds=5.0, classify_state_bounds=True,
+        python_executable=None, build_args=(), selected=selected)
+    return [key for key in panel if key != "lang"]
 
 
-def test_asking_for_the_runtime_readings_reads_nothing_else(small_repo, monkeypatch, capsys):
-    monkeypatch.setattr(dead_code, "analyze", _refuse)
-    monkeypatch.setattr(state_bounds, "classify", _refuse)
-    monkeypatch.setattr(indicators, "_god_files", _refuse)
-
+def test_asking_for_the_runtime_readings_reads_nothing_else(small_repo, capsys):
     code = cli.main([str(small_repo), "--no-exec", "--indicators", "19,20", "--format", "json"])
 
     assert code == 0
     results = json.loads(capsys.readouterr().out)["results"]
-    source_rows = sorted(key for key in results if key.startswith("L1.1") and len(key) > 4
-                         or key in ("L1.18b", "path_cover", "thread_surface", "absolute_paths"))
-    assert source_rows == ["L1.19"], sorted(results)
-    assert "L1.20" in results
+    source_rows = sorted(key for key in results
+                         if key.startswith("L1.") and int(key[3:5].rstrip("b")) >= 12 or key in _REFINEMENTS)
+    assert source_rows == ["L1.19", "L1.20"], sorted(results)
 
 
-def test_the_state_meter_brings_its_refinements_with_it(small_repo):
-    panel = indicators.compute_source_indicators(
-        small_repo, lang="python", exec_tests=False, timeout_seconds=5.0, classify_state_bounds=True,
-        python_executable=None, build_args=(), selected=frozenset({"18"}))
-    assert [key for key in panel if key != "lang"] == [
-        "L1.18", "L1.18b", "path_cover", "thread_surface", "absolute_paths"]
+def test_a_static_reading_brings_the_refinements_with_it(small_repo):
+    assert _panel(small_repo, frozenset({"17"})) == ["L1.17", *_REFINEMENTS]
 
 
 def test_asking_for_everything_runs_everything_in_the_order_it_always_ran(small_repo):
-    panel = indicators.compute_source_indicators(
-        small_repo, lang="python", exec_tests=False, timeout_seconds=5.0, classify_state_bounds=True,
-        python_executable=None, build_args=(), selected=None)
-    assert [key for key in panel if key != "lang"] == [
+    assert _panel(small_repo, None) == [
         "L1.16", "L1.17", "L1.18", "L1.15", "L1.12", "L1.14", "L1.13",
-        "L1.18b", "path_cover", "thread_surface", "absolute_paths", "L1.19", "L1.20"]
+        *_REFINEMENTS, "L1.19", "L1.20"]

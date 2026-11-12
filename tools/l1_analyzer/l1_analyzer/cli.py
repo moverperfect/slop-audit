@@ -566,7 +566,8 @@ FLAGS: tuple[tuple[list[str], Flag], ...] = (
     (["--indicators"], {
      "default": "all",
      "help": "Comma-separated L1 numbers or 'all' (default). E.g. 1,2,18. Each source "
-             "indicator (12-20) runs only when named, and 18 brings its refinements; "
+             "indicator (12-20) runs only when named, and naming any of 12-18 also runs "
+             "the static refinements (L1.18b, path cover, thread surface, absolute paths); "
              "naming any git (1-8) or config (9-11) indicator runs that whole stage.",
      }),
     (["--lang"], {

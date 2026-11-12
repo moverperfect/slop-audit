@@ -278,8 +278,9 @@ def compute_source_indicators(
     None for all of them. Each reading runs only when its number is in it. It chose nothing
     until 2026-11-12: one source number asked for the whole pass, so `--indicators 19,20` read
     a whole repository for twelve readings nobody wanted before it ran the suite, about
-    seventy-eight minutes on an Astro site on Windows. L1.18's refinements travel with 18,
-    the grouping `classify_state_bounds` already gives them. None keeps every reading in the
+    seventy-eight minutes on an Astro site on Windows. The refinements, which carry no number
+    of their own, run whenever any static reading (12 to 18) is asked for and are skipped
+    only when the selection is the runtime pair alone. None keeps every reading in the
     order it always ran, which is the full panel byte for byte. Required, like the two
     arguments before it: a defaulted None could not tell a caller that chose every reading
     from one that forgot this parameter exists.
@@ -326,7 +327,7 @@ def compute_source_indicators(
     # handed any row the panel knows and pass it through without saying which.
     if "13" in asked:
         results["L1.13"] = _compute_external_indicators(repo, lang)["L1.13"]
-    if classify_state_bounds and "18" in asked:
+    if classify_state_bounds and asked - _RUNTIME_INDICATORS:
         from l1_analyzer import state_bounds
         results["L1.18b"] = state_bounds.classify(repo, lang)
         from l1_analyzer import path_cover
@@ -376,6 +377,8 @@ def compute_source_indicators(
 # The source readings by their bare L1 numbers, as `--indicators` spells them. The CLI's
 # table of what each stage computes reads this one.
 SOURCE_INDICATORS = frozenset({"12", "13", "14", "15", "16", "17", "18", "19", "20"})
+# The two that run the project's suite rather than read its source.
+_RUNTIME_INDICATORS = frozenset({"19", "20"})
 
 _WHITESPACE_EXTS = frozenset({".py", ".rs", ".c", ".h", ".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".java", ".cs", ".rb", ".go"})
 _GOD_FILE_EXTS = frozenset({".py", ".rs", ".c", ".h", ".js", ".ts", ".java", ".cs", ".go", ".rb"})
