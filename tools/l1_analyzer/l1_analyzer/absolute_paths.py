@@ -28,7 +28,8 @@ from l1_analyzer.pytest_trace import L1Result
 from l1_analyzer.scope import PRODUCTION
 
 # Roots that identify one machine: a home or user directory, a temp or scratch location, a
-# mount point. A URL path or an API route never begins with one of these.
+# mount point. An API route almost never begins with one of these; `/media/` is the exception
+# the web makes, and _FILE_AT_THE_MEDIA_ROOT says how much of it can be told apart.
 _UNIX_ROOTS = (
     r"/home/", r"/Users/", r"/root/", r"/tmp/", r"/private/(?:tmp|var)/",
     r"/var/folders/", r"/mnt/", r"/media/", r"/opt/",
@@ -71,6 +72,15 @@ _CAP = 50
 # somebody removed the machine from it by hand.
 _ELIDED = re.compile(r"/\.{3,}/|\\\.{3,}\\")
 
+# A FILE directly under `/media`, which is where the web keeps uploaded images and where no
+# machine keeps a file. The filesystem standard has `/media` hold one directory per mounted
+# volume, so `/media/img1.jpg` is inside no volume: an Astro site's one finding on 2026-11-12
+# was a mock article's `url: '/media/img1.jpg'`. Only this shape. `/media/images/hero.jpg` and
+# `/media/usb/report.csv` look alike and one of them is a mounted disk, so both stay flagged,
+# and so does a bare `/media/backup`, which is a volume. `/mnt` gets no such allowance: it is a
+# mount point itself, so a file directly under it is a file on a mounted disk.
+_FILE_AT_THE_MEDIA_ROOT = re.compile(r"^/media/[^/]+\.[A-Za-z0-9]{1,5}$")
+
 
 class Site(TypedDict):
     """One hardcoded machine-specific path, and where it is written."""
@@ -101,7 +111,8 @@ def _matches(text: str) -> list[tuple[int, str]]:
     out: list[tuple[int, str]] = []
     for lineno, line in enumerate(text.splitlines(), start=1):
         out.extend((lineno, m.group(0)) for m in _ABSOLUTE.finditer(line)
-                   if not _ELIDED.search(m.group(0)))
+                   if not _ELIDED.search(m.group(0))
+                   and not _FILE_AT_THE_MEDIA_ROOT.match(m.group(0)))
     return out
 
 

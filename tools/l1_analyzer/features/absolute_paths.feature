@@ -8,6 +8,7 @@ Feature: absolute_paths — machine-specific absolute paths in source
     When _matches scans it line by line
     Then it returns the 1-based line number and the matched text of each machine root it finds
     But a path that begins with a root no rule names, such as an API route, yields nothing
+    And a file named directly under /media yields nothing either, because that directory holds one directory per mounted volume and the web keeps its images there, while any path through a directory under /media is still reported
 
   # The undecidable case. Every feature carries exactly one, and the gate requires it, because
   # a measure that meets a construct it has no rule for must say so rather than return a verdict.
