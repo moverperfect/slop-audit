@@ -235,7 +235,10 @@ class ExternalRun(TypedDict):
 
 def _run_external(cmd: list[str], cwd: Path) -> ExternalRun:
     try:
-        done = subprocess.run(cmd, cwd=str(cwd), text=True, capture_output=True, check=False)
+        # UTF-8, which is what git writes, rather than the locale's code page. `text=True` read
+        # cp1252 on Windows, and one undefined byte in a commit message came back as None.
+        done = subprocess.run(cmd, cwd=str(cwd), encoding="utf-8", errors="replace",
+                              capture_output=True, check=False)
     except (FileNotFoundError, OSError):
         return {"ran": False, "status": -1, "output": ""}
     return {"ran": True, "status": done.returncode, "output": done.stdout}

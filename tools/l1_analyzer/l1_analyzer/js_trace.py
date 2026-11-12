@@ -146,10 +146,14 @@ def _package_json(repo: Path) -> Manifest | None:
 
     Declared the boundary rather than split: there is no decision here to lift out. It
     obtains bytes and hands back what they parse to, and the caller turns None into a
-    refusal to measure."""
+    refusal to measure.
+
+    Read as UTF-8, which JSON is by definition. A bare `read_text()` decoded with the locale's
+    code page, cp1252 on Windows, and a description carrying one undefined byte raised past
+    this handler. A manifest that is not UTF-8 at all is unreadable, and says so as None."""
     try:
-        return json.loads((repo / "package.json").read_text())
-    except (OSError, json.JSONDecodeError):
+        return json.loads((repo / "package.json").read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
         return None
 
 
@@ -194,10 +198,11 @@ def major_in(text: str, package: str) -> tuple[int | None, str]:
 
 @boundary
 def _read_installed(path: Path) -> str | None:
-    """One installed package.json's text, or nothing when it cannot be read."""
+    """One installed package.json's text, or nothing when it cannot be read. UTF-8, like the
+    project's own manifest above."""
     try:
-        return path.read_text()
-    except OSError:
+        return path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
         return None
 
 
@@ -362,8 +367,8 @@ def decision_space_coverage(repo: Path, timeout_seconds: float, runtime_override
             return _na(f"coverage produced no data (test command exit {run.returncode}): "
                        f"{_first_line(run.stderr or run.stdout)}")
         try:
-            branches = json.loads(summary.read_text())["total"]["branches"]
-        except (OSError, json.JSONDecodeError, KeyError, TypeError):
+            branches = json.loads(summary.read_text(encoding="utf-8"))["total"]["branches"]
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError, KeyError, TypeError):
             return _na("coverage summary had no branch totals")
 
     return _coverage_verdict(branches, run.returncode, runtime, timeout_seconds, how)

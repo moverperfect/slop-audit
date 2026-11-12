@@ -135,7 +135,9 @@ def compute_git_indicators(repo: Path, since: str | None, until: str | None) -> 
         cmd += ["--until", until]
 
     try:
-        out = subprocess.check_output(cmd, text=True, stderr=subprocess.DEVNULL)
+        # UTF-8, which is what git writes. With `core.quotepath false` a non-ASCII path arrives
+        # raw, and decoded in cp1252 it raised instead of being counted.
+        out = subprocess.check_output(cmd, encoding="utf-8", errors="replace", stderr=subprocess.DEVNULL)
     except (subprocess.CalledProcessError, FileNotFoundError) as error:
         # "n/a", not 0. The band said nothing was measured and the value said zero, and the
         # card renders the value, so a directory that is not a git working copy produced
