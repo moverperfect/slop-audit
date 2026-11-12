@@ -806,6 +806,25 @@ def _node_text(n: Node) -> str:
     return n.text.decode("utf8", errors="ignore") if n.text else ""
 
 
+# TypeScript's declaration files, in each module flavour. They describe code that lives
+# somewhere else, often JavaScript with no types at all.
+_DECLARATION_SUFFIXES = (".d.ts", ".d.mts", ".d.cts")
+
+
+def type_checked_files(files: list[tuple[Path, bytes]]) -> list[tuple[Path, bytes]]:
+    """The files L1.15 measures: every production file but a TypeScript declaration file.
+
+    The canon's TypeScript escape is "`any` in TypeScript (excluding declaration files)". A
+    declaration's `any` says what somebody else's code accepts, not where this codebase stopped
+    checking, and `wrangler types` alone writes a sixteen-thousand-line one into every
+    Cloudflare Workers project. Out of both halves of the density: counting its lines while
+    ignoring its escapes would dilute the figure with code the definition does not measure.
+
+    One function, read by the indicator and by the gate's ratchet, so the two cannot count by
+    different rules; that is the drift `_count_type_escapes_in_tree` was centralised to stop."""
+    return [(path, src) for path, src in files if not path.name.lower().endswith(_DECLARATION_SUFFIXES)]
+
+
 def _compute_type_escapes(repo: Path, lang: str) -> L1Result:
     """L1.15: density of type-escape hatches (Any/object/dynamic and ignore comments).
 
@@ -854,7 +873,7 @@ def _compute_type_escapes(repo: Path, lang: str) -> L1Result:
 
     escape_count = 0
     total_loc = 0
-    for path, src in files:
+    for path, src in type_checked_files(files):
         # Minus the file's test region, blanked by the reader above and therefore still
         # present as spaces, so that line numbers stay the author's. Escapes inside a test
         # are no longer counted, and counting their lines would deflate the density. No

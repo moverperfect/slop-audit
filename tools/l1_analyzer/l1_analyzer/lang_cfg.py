@@ -361,7 +361,13 @@ _TYPESCRIPT_CFG["language"] = Language(tree_sitter_typescript.language_typescrip
 TSX_LANGUAGE = Language(tree_sitter_typescript.language_tsx())
 _TYPESCRIPT_CFG["extensions"] = (".ts", ".tsx")
 # TypeScript has types to escape from; JavaScript has none, so its patterns are empty.
-_TYPESCRIPT_CFG["type_escape_patterns"] = ("any", "unknown")  # plus // @ts-ignore
+#
+# `any`, and not `unknown`, which this read until 2026-11-12. The canon names `any` alone
+# (spec/03-layer1-indicators.md, L1.15). `unknown` is TypeScript's safe top type: nothing can
+# be done with the value until the code narrows it, so the checker stays in force at every use,
+# where `any` switches it off. Counting both charged an author for the careful annotation, and
+# to this counter the careless one read the same.
+_TYPESCRIPT_CFG["type_escape_patterns"] = ("any",)  # plus // @ts-ignore
 _TYPESCRIPT_CFG["type_escape_nonpositions"] = ("import_statement", "pair")
 # TypeScript declares types where JavaScript has nowhere to put one, so it is the only one
 # of the pair with a container that can be named without its contents.

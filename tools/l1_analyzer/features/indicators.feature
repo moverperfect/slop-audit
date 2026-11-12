@@ -193,6 +193,13 @@ Feature: indicators — the Layer-1 indicator computations, L1.1 through L1.20
     And there is no minimum denominator, so a twenty-line file of nothing but escapes reports the density it earned instead of a fabricated clean zero
     But a language with no configured escape vocabulary returns n/a, and so does a scan that found no production lines at all
 
+  Scenario: type_checked_files leaves TypeScript declaration files out of the escape count
+    Given the production files a scope reader returned
+    When type_checked_files filters them for L1.15 and for the gate's ratchet
+    Then every file comes back except a declaration file in any of TypeScript's three module spellings
+    And the declaration file leaves both halves of the density, so its lines cannot dilute a figure its escapes are not in
+    But it is one function read by both counters, so the indicator and the ratchet cannot count by different rules
+
   # A decision point is a construct at which control can take more than one path. An if, an
   # elif, an unless and a ternary count one each; an else counts nothing, because it is the
   # other path of the if that already counted. Each arm of a switch or match counts one,

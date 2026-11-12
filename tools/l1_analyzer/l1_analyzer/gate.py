@@ -67,7 +67,8 @@ def _count_type_escapes(repo: Path, lang: str) -> int:
         return 0
     parser = indicators._get_parser(lang)
     files, _skipped, _test_lines = indicators._read_source_bytes(repo, cfg["extensions"], scope=PRODUCTION)
-    return sum(indicators._count_type_escapes_in_tree(parser.parse(src).root_node, cfg) for _path, src in files)
+    return sum(indicators._count_type_escapes_in_tree(parser.parse(src).root_node, cfg)
+               for _path, src in indicators.type_checked_files(files))
 
 
 def _slack(actual: int, baseline: int, label: str, counted: Path) -> list[str]:

@@ -299,7 +299,7 @@ pub const LANGS: &[LangCfg] = &[
     LangCfg {
         key: "typescript",
         extensions: &[".ts", ".tsx"],
-        type_escape_patterns: &["any", "unknown"],
+        type_escape_patterns: &["any"],
         annotation_escape_nodes: &[],
         annotation_escape_names: &[],
         type_escape_nonpositions: &["import_statement", "pair"],

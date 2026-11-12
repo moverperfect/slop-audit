@@ -332,8 +332,10 @@ def test_l1_15_the_ratchet_counts_what_the_indicator_counts(tmp_path):
 
 
 def test_l1_15_typescript_any_and_unknown(tmp_path):
+    # One, not two, since 2026-11-12: the canon names `any`, and `unknown` is the safe top
+    # type. See test_typescripts_unknown_is_not_an_escape_hatch.py.
     res = _escapes(tmp_path, "typescript", "a.ts", "let x: any = 1;\nlet y: unknown = 2;\n")
-    assert res["details"].startswith("2 escapes")
+    assert res["details"].startswith("1 escapes")
 
 
 def test_l1_15_untyped_language_is_na(tmp_path):
