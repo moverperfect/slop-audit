@@ -108,9 +108,11 @@ def band(value: float, healthy: float, slop: float, *, higher_is_better: bool) -
 
 
 def compute_config_indicators(repo: Path) -> Panel:
+    from l1_analyzer import ci_pipelines
+
     has_precommit = (repo / ".pre-commit-config.yaml").exists() or (repo / ".husky").exists()
-    ci_files = list((repo / ".github" / "workflows").glob("*.yml")) + list((repo / ".github" / "workflows").glob("*.yaml"))
-    ci_count = len(ci_files)
+    pipelines = ci_pipelines.find(repo)
+    ci_count = ci_pipelines.count(pipelines)
     has_docker = (repo / "Dockerfile").exists() or (repo / "docker-compose.yml").exists()
 
     # Each carries a details line naming what was looked for and where. These three shipped
@@ -127,8 +129,7 @@ def compute_config_indicators(repo: Path) -> Panel:
         "L1.10": {
             "value": ci_count,
             "band": band(ci_count, 5, 1, higher_is_better=True),
-            "details": (f"{ci_count} workflow file(s) in .github/workflows" if ci_count else
-                        "no .yml or .yaml workflow files in .github/workflows"),
+            "details": ci_pipelines.details(pipelines),
         },
         "L1.11": {
             "value": "present and parameterized" if has_docker else "absent",
