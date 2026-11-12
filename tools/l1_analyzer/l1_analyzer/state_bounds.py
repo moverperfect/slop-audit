@@ -147,7 +147,7 @@ def _state_refs(scope: Node, key: str, sp: LangSpec) -> list[Node]:
         return _local_refs(scope, lambda n: n.type == "instance_variable" and _text(n) == key, stop)
     if sp["instance_ref_style"] == "member":
         return _local_refs(scope, lambda n: n.type in sp["member_types"] and _text(n) == key, stop)
-    hits = _local_refs(scope, lambda n: n.type == "identifier" and _text(n) == key, stop)
+    hits = _local_refs(scope, lambda n: n.type in sp["name_reference_types"] and _text(n) == key, stop)
     return _bound_to(hits, key, sp)
 
 
@@ -245,15 +245,21 @@ def _finding(key: str, refs: list[Node], rel: str, sp: LangSpec, closed_sets: di
             "partition": partition}
 
 
-def _named(name: str) -> Callable[[Node], bool]:
-    """A test for identifiers spelling one name.
+def _named(name: str, sp: LangSpec) -> Callable[[Node], bool]:
+    """A test for the nodes that read a variable by one name.
 
     A named function rather than a lambda with a default parameter standing in for a
     binding. The loop rebinds the name every turn and a captured one would test every state
     against the last, which is a real reason spelled as a trick: nothing could say what the
-    default was."""
+    default was.
+
+    By the language's `name_reference_types`, not `identifier` alone: JavaScript's `{ S }` is
+    its own node, and matching identifiers only left that reference uncollected, so the short
+    spelling read cleaner than the long one."""
+    kinds = sp["name_reference_types"]
+
     def spells_it(node: Node) -> bool:
-        return node.type == "identifier" and _text(node) == name
+        return node.type in kinds and _text(node) == name
     return spells_it
 
 
@@ -276,7 +282,7 @@ def _analyze_file(root: Node, rel: str, sp: LangSpec, cfg: LangCfg, immutable_ct
     module = state_enum.module_cands(root, sp, cfg)
     visited |= set(module)
     for name in state_enum.keys_of(module):
-        refs = _bound_to(_refs(root, _named(name)), name, sp)
+        refs = _bound_to(_refs(root, _named(name, sp)), name, sp)
         if refs:
             findings.append(_finding(name, refs, rel, sp, closed_sets, immutable_ctors,
                                      instance=False, hidden=hidden))

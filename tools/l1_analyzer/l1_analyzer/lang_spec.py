@@ -67,6 +67,10 @@ class LangSpec(TypedDict, total=False):
     # A function whose body is a bare expression returns it, as {node type: body field}.
     # The field, not the node: JavaScript's arrow also hangs a lone parameter off itself.
     expression_body_types: dict[str, str]
+    # The nodes that name a variable and READ it. `identifier` everywhere; JavaScript also
+    # spells `{ S }` as its own node, and a collector that matched identifiers alone never
+    # saw that reference, so the shorter spelling hid a use the longer one showed.
+    name_reference_types: tuple[str, ...]
     local_binding: dict[str, tuple[str, str | None]]
     # A match or switch, as {node type: (subject field, arm type)}. Two readers want it: the
     # state classifier, which has read it since it was written, and clause 1, for which a
@@ -621,6 +625,7 @@ LANG_SPEC: dict[str, LangSpec] = {
         "holding_types": (),
         "holding_entry_types": {},
         "expression_body_types": {},
+        "name_reference_types": ("identifier",),
         "local_binding": {"assignment": ("left", "right")},
         "switch_types": {"match_statement": ("subject", "case_clause")},
         "immutable_modifiers": frozenset(),
@@ -945,6 +950,9 @@ LANG_SPEC: dict[str, LangSpec] = {
         # `() => x` returns x. C# spells the same thing as an arrow_expression_clause, which
         # sits in its return row; here the arrow node also holds the parameter, so the field.
         "expression_body_types": {"arrow_function": "body"},
+        # `{ S }` reads S exactly as `{ S: S }` does. The destructuring `const { S } = o` is a
+        # different node, `shorthand_property_identifier_pattern`, and binds a new name.
+        "name_reference_types": ("identifier", "shorthand_property_identifier"),
         "local_binding": {"variable_declarator": ("name", "value")},
         "switch_types": {"switch_statement": ("value", "switch_case")},
         "immutable_modifiers": frozenset({"const"}),
@@ -1115,6 +1123,7 @@ LANG_SPEC: dict[str, LangSpec] = {
         "holding_types": (),
         "holding_entry_types": {},
         "expression_body_types": {},
+        "name_reference_types": ("identifier",),
         "local_binding": {"variable_declarator": ("name", "value")},
         "switch_types": {"switch_expression": ("condition", "switch_block_statement_group")},
         "immutable_modifiers": frozenset({"final"}),
@@ -1270,6 +1279,7 @@ LANG_SPEC: dict[str, LangSpec] = {
         "holding_types": (),
         "holding_entry_types": {},
         "expression_body_types": {},
+        "name_reference_types": ("identifier",),
         "local_binding": {"variable_declarator": ("name", None)},
         "switch_types": {"switch_statement": ("value", "switch_section")},
         "immutable_modifiers": frozenset({"const", "readonly"}),
@@ -1440,6 +1450,7 @@ LANG_SPEC: dict[str, LangSpec] = {
         "holding_types": (),
         "holding_entry_types": {},
         "expression_body_types": {},
+        "name_reference_types": ("identifier",),
         "local_binding": {"let_declaration": ("pattern", "value")},
         "switch_types": {"match_expression": ("value", "match_arm")},
         "immutable_modifiers": frozenset({"const", "static"}),
@@ -1615,6 +1626,7 @@ LANG_SPEC: dict[str, LangSpec] = {
         "holding_types": (),
         "holding_entry_types": {},
         "expression_body_types": {},
+        "name_reference_types": ("identifier",),
         "local_binding": {"assignment": ("left", "right")},
         "switch_types": {"case": ("value", "when")},
         "immutable_modifiers": frozenset(),
@@ -1776,6 +1788,7 @@ LANG_SPEC: dict[str, LangSpec] = {
         "holding_types": (),
         "holding_entry_types": {},
         "expression_body_types": {},
+        "name_reference_types": ("identifier",),
         "local_binding": {"init_declarator": ("declarator", "value")},
         "switch_types": {"switch_statement": ("condition", "case_statement")},
         "immutable_modifiers": frozenset({"const"}),
@@ -1952,6 +1965,7 @@ LANG_SPEC: dict[str, LangSpec] = {
         "holding_types": (),
         "holding_entry_types": {},
         "expression_body_types": {},
+        "name_reference_types": ("identifier",),
         "local_binding": {"short_var_declaration": ("left", "right")},
         "switch_types": {"expression_switch_statement": ("value", "expression_case")},
         "immutable_modifiers": frozenset({"const"}),
