@@ -117,8 +117,9 @@ Feature: js_trace — running a JavaScript or TypeScript project's own suite to 
 
   Scenario: _failure_summary pulls out a line a reader can act on when a run fails
     Given the combined output of a failed run
-    When _failure_summary looks for the first line mentioning failure
-    Then it returns that line, trimmed to two hundred characters
+    When _failure_summary looks for the runner's own FAIL line, then its summary count of failures, then any other line mentioning a failure
+    Then it returns the first it finds, trimmed to two hundred characters
+    And a line the runner printed for a passing test is never the one, whatever the test is called
     But when no line mentions failure it returns the first non-blank line, so the reason is never empty
 
   Scenario: _determinism_verdict decides L1.20 from the outcome of every shuffled-order run

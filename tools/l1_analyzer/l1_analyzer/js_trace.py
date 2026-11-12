@@ -402,12 +402,30 @@ def _suite_ran(runner: str, output: str) -> bool:
     return any(marker in output for marker in _RAN_MARKERS[runner])
 
 
+# What the two runners print where a test or a file failed, and where they count failures.
+# Both start the line, once its indentation is gone.
+_FAIL_LINE = "FAIL"
+_SUMMARY_LINES = ("Test Files", "Tests", "Test Suites:")
+# What both print in front of a test that PASSED. A passing test's name can say anything.
+_PASSED_LINE = ("✓", "√", "PASS")
+
+
 def _failure_summary(output: str) -> str:
     """A line that names the failure, so a nonzero run surfaces a reason a reader can act on
-    rather than a bare score."""
-    for line in output.splitlines():
-        if "fail" in line.lower():
-            return line.strip()[:200]
+    rather than a bare score.
+
+    The runner's own FAIL line first, which names the file and, in vitest, the test; then its
+    summary count; then any line that mentions a failure and is not a passing test's. This read
+    the first line containing "fail" until 2026-11-12, and vitest's verbose reporter prints every
+    passing test by name: on an Astro site it quoted a test called "returns the failed state"
+    that had passed, and never named the one that timed out."""
+    lines = [line.strip() for line in output.splitlines()]
+    for wanted in (lambda s: s.startswith(_FAIL_LINE),
+                   lambda s: s.startswith(_SUMMARY_LINES) and "fail" in s.lower(),
+                   lambda s: "fail" in s.lower() and not s.startswith(_PASSED_LINE)):
+        for line in lines:
+            if wanted(line):
+                return line[:200]
     return _first_line(output)
 
 
