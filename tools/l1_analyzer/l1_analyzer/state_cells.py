@@ -28,10 +28,10 @@ from l1_analyzer.ts_nodes import unwrap_unary as _unwrap_unary
 
 
 def is_unbounded_value(node: Node | None, sp: LangSpec) -> bool:
-    """A value used as a lookup key / index. Literals are bounded; anything else
-    (a parameter, a variable) ranges over an unbounded domain."""
-    node = _unwrap_unary(node, sp)
-    return node is not None and node.type not in sp["literal_types"]
+    """A value used as a lookup key / index. Literals are bounded, and so is a name that can
+    only ever hold one (`literal_key`); anything else (a parameter, a variable) ranges over an
+    unbounded domain."""
+    return _unwrap_unary(node, sp) is not None and literal_key(node, sp) is None
 
 
 def keyed_read(key_node: Node | None, sp: LangSpec, cells: int | None) -> Reach:
@@ -47,8 +47,162 @@ def keyed_read(key_node: Node | None, sp: LangSpec, cells: int | None) -> Reach:
         if cells is not None:
             return state_partition.finite(cells + 1, False, "cells")
         return state_partition.unbounded()
-    key = _unwrap_unary(key_node, sp)
+    # The literal itself, whether written here or bound to a fixed name, so `S['a']` and
+    # `S[K]` with K fixed at 'a' cut the partition at one cell between them.
+    key = literal_key(key_node, sp)
     return state_partition.finite(2, key is not None and key.type in state_partition.ORDERED_LITERALS, cell_key(key))
+
+
+def literal_key(node: Node | None, sp: LangSpec) -> Node | None:
+    """The literal a key stands for, or None when it stands for no single value.
+
+    A literal stands for itself. So does a NAME bound, in the scope the read sees, by a
+    declaration that can never be reassigned and was initialised to a literal:
+    `const key = 'status'; S.get(key)` can only ever ask about `'status'`. Reading
+    such a name as an open key graded one program two ways, by whether the author named the
+    literal or wrote it inline. Which declarations are fixed is the language's
+    `fixed_bindings` row; Python and Ruby declare none, so no name is ever resolved there."""
+    node = _unwrap_unary(node, sp)
+    if node is None:
+        return None
+    if node.type in sp["literal_types"]:
+        return node
+    if node.type in sp["name_reference_types"] and sp["fixed_bindings"]:
+        return _fixed_literal(node, sp)
+    return None
+
+
+def _fixed_literal(name: Node, sp: LangSpec) -> Node | None:
+    """The literal a name is fixed to, found by lexical scope: the nearest enclosing node
+    that binds the name decides, and every doubt answers None.
+
+    None when the nearest binding is a parameter or a loop binding, when it is reassignable,
+    when its initialiser is anything but one literal (a template that interpolates is not
+    one), when the scope binds the name twice (Rust's shadowing `let`), or when, inside a
+    function, the binding comes after the read and so is not the one the read sees."""
+    key = _text(name)
+    child, scope = name, name.parent
+    while scope is not None:
+        if key in _bound_on_the_way(scope, child, sp):
+            return None
+        found = [(decl, value) for decl in _declarations_in(scope, sp)
+                 for bound, value in _declared(decl, sp) if bound == key]
+        if found:
+            if len(found) != 1:
+                return None
+            decl, value = found[0]
+            in_function = any(n.type in sp["func_types"] for n in _ancestors(scope))
+            if in_function and decl.start_byte > name.start_byte:
+                return None
+            value = _unwrap_unary(value, sp)
+            one_value = (value is not None and value.type in sp["literal_types"]
+                         and not any(c.type == "template_substitution" for c in value.children))
+            return value if one_value and _is_fixed(decl, sp) else None
+        child, scope = scope, scope.parent
+    return None
+
+
+def _ancestors(node: Node) -> list[Node]:
+    """The node and everything above it."""
+    out = []
+    cur: Node | None = node
+    while cur is not None:
+        out.append(cur)
+        cur = cur.parent
+    return out
+
+
+def _bound_on_the_way(scope: Node, child: Node, sp: LangSpec) -> set[str]:
+    """The names this scope binds other than by declaration statements: a function's or a
+    catch clause's parameters, a loop's element (on the scope, or on a range clause beside the
+    body as Go writes it), and a pattern a branch or arm binds. The child the read came up
+    through is skipped, so a default value is not mistaken for the parameter it defaults."""
+    holders = [_field(scope, f) for f in ("parameters", "parameter", "pattern")]
+    if scope.type in sp["iterate_binding"]:
+        holders.append(_field(scope, sp["iterate_binding"][scope.type]))
+    for c in scope.children:
+        if c.type in sp["iterate_binding"]:
+            holders.append(_field(c, sp["iterate_binding"][c.type]))
+        elif c.type not in sp["local_binding"] and c.type not in sp["fixed_bindings"]:
+            holders.append(_field(c, "pattern"))
+    return {_text(n) for h in holders if h is not None and not _same(h, child)
+            for n in descendants(h, "named")
+            if n.type in ("identifier", "shorthand_property_identifier_pattern")}
+
+
+def _declarations_in(scope: Node, sp: LangSpec) -> list[Node]:
+    """The declaration statements directly in this scope, an exported one included."""
+    kinds = {*sp["fixed_bindings"], *sp["declaration_types"], *sp["local_binding"]}
+    out = []
+    for c in scope.children:
+        inner = _field(c, "declaration") if c.type == "export_statement" else c
+        if inner is not None and inner.type in kinds:
+            out.append(inner)
+    return out
+
+
+def _declared(decl: Node, sp: LangSpec) -> list[tuple[str, Node | None]]:
+    """(name, initialiser) for every name a declaration binds. A name bound by a pattern, or
+    by a declarator that is not a plain name (C's `*p`), comes with no initialiser, so it
+    binds without settling. Declarators sit at most three levels down (C# nests field,
+    variable declaration, declarator), which also keeps a nested function's locals out."""
+    pairs: list[tuple[str, Node | None]] = []
+    level = [decl]
+    for _ in range(4):
+        below = []
+        for node in level:
+            slots = sp["local_binding"].get(node.type)
+            if slots is not None:
+                name_field, value_field = slots
+                value = _field(node, value_field) if value_field else (
+                    node.named_children[-1] if len(node.named_children) > 1 else None)
+                pairs += _paired(_field(node, name_field), value, sp)
+            elif _field(node, "name") is not None and _field(node, "value") is not None:
+                names = node.children_by_field_name("name")
+                value = _field(node, "value")
+                values = value.named_children if value is not None and value.type == "expression_list" else [value]
+                if len(names) == len(values):
+                    pairs += [p for n, v in zip(names, values) for p in _paired(n, v, sp)]
+                else:
+                    pairs += [p for n in names for p in _paired(n, None, sp)]
+            else:
+                below += node.named_children
+        level = below
+    return pairs
+
+
+def _paired(name: Node | None, value: Node | None, sp: LangSpec) -> list[tuple[str, Node | None]]:
+    """A plain name with its initialiser; every name inside anything else with none. Go's list
+    of names is paired with its list of values one to one first, when the counts agree."""
+    if name is None:
+        return []
+    values = value.named_children if value is not None and value.type == sp["lvalue_wrapper"] else []
+    names = name.named_children if sp["lvalue_wrapper"] and name.type == sp["lvalue_wrapper"] else []
+    pairs = list(zip(names, values)) if names and len(names) == len(values) else [(name, value)]
+    out: list[tuple[str, Node | None]] = []
+    for one, its_value in pairs:
+        if one.type in sp["name_reference_types"]:
+            out.append((_text(one), its_value))
+        else:
+            out += [(_text(n), None) for n in descendants(one, "named")
+                    if n.type in ("identifier", "shorthand_property_identifier_pattern")]
+    return out
+
+
+def _is_fixed(decl: Node, sp: LangSpec) -> bool:
+    """Whether the language says this declaration's bindings can never be reassigned. The
+    marker is a child or a grandchild, as `const` is the declaration's own keyword in
+    JavaScript and sits in a `modifiers` node in Java."""
+    row = sp["fixed_bindings"].get(decl.type)
+    if row is None:
+        return False
+    marker, present_fixes = row
+    if not marker:
+        return present_fixes
+    marked = any(c.type == marker or _text(c) == marker
+                 or any(g.type == marker or _text(g) == marker for g in c.children)
+                 for c in decl.children)
+    return marked == present_fixes
 
 
 def guarded_by_closed_set(key_node: Node | None, sp: LangSpec, closed_sets: dict[str, int | None]) -> int | None:

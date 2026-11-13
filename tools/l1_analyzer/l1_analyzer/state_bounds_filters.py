@@ -69,6 +69,7 @@ from l1_analyzer.lang_spec import (
     COMPARISON_OPS,
     LangSpec,
 )
+from l1_analyzer.state_cells import literal_key
 from l1_analyzer.ts_nodes import descendants
 from l1_analyzer.ts_nodes import field as _field
 from l1_analyzer.ts_nodes import first_arg as _first_arg
@@ -466,7 +467,8 @@ def _is_open_key(key: Node | None, sp: LangSpec) -> bool:
     # values by the cell reader. The disagreement over-accuses, because an open key is what
     # keeps a finding.
     key = _unwrap_unary(key, sp)
-    if key is None or key.type in sp["literal_types"]:
+    # A name fixed to a literal is that literal, by the rule the cell reader uses.
+    if key is None or literal_key(key, sp) is not None:
         return False
     return not _is_state_of_this_class(key, sp)
 

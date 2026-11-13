@@ -86,6 +86,12 @@ class LangSpec(TypedDict, total=False):
     # its callee in `call_fn`; `new Foo(x)` keeps it here, and a reader looking only at
     # `call_fn` found nothing and called the target computed.
     construct_types: dict[str, str]
+    # The declarations whose bindings can never be reassigned, as {node type: (marker, whether
+    # the marker's presence is what fixes it)}. `const` in JavaScript fixes a lexical
+    # declaration; `mut` in Rust is what unfixes a `let`; an empty marker fixes the declaration
+    # outright, as Go's `const` does. A name read as a key and bound by one of these to a
+    # literal is that literal. Python and Ruby can rebind any local and declare none.
+    fixed_bindings: dict[str, tuple[str, bool]]
     local_binding: dict[str, tuple[str, str | None]]
     # A match or switch, as {node type: (subject field, arm type)}. Two readers want it: the
     # state classifier, which has read it since it was written, and clause 1, for which a
@@ -645,6 +651,7 @@ LANG_SPEC: dict[str, LangSpec] = {
         "declaration_types": (),
         "module_resolution": "",
         "construct_types": {},
+        "fixed_bindings": {},
         "local_binding": {"assignment": ("left", "right")},
         "switch_types": {"match_statement": ("subject", "case_clause")},
         "immutable_modifiers": frozenset(),
@@ -979,6 +986,7 @@ LANG_SPEC: dict[str, LangSpec] = {
         "module_resolution": "node",
         # `new Foo(x)`: what is constructed sits in `constructor`, not in `function`.
         "construct_types": {"new_expression": "constructor"},
+        "fixed_bindings": {"lexical_declaration": ("const", True)},
         "local_binding": {"variable_declarator": ("name", "value")},
         "switch_types": {"switch_statement": ("value", "switch_case")},
         "immutable_modifiers": frozenset({"const"}),
@@ -1154,6 +1162,9 @@ LANG_SPEC: dict[str, LangSpec] = {
         "declaration_types": ("field_declaration", "local_variable_declaration", "constant_declaration"),
         "module_resolution": "",
         "construct_types": {"object_creation_expression": "type"},
+        # An interface's constant is final whether or not it says so.
+        "fixed_bindings": {"local_variable_declaration": ("final", True),
+                           "field_declaration": ("final", True), "constant_declaration": ("", True)},
         "local_binding": {"variable_declarator": ("name", "value")},
         "switch_types": {"switch_expression": ("condition", "switch_block_statement_group")},
         "immutable_modifiers": frozenset({"final"}),
@@ -1314,6 +1325,9 @@ LANG_SPEC: dict[str, LangSpec] = {
         "declaration_types": ("field_declaration", "local_declaration_statement", "property_declaration"),
         "module_resolution": "",
         "construct_types": {"object_creation_expression": "type"},
+        # `const` only: a `readonly` field initialised to a literal can still be assigned in a
+        # constructor, so its value is not settled by its declaration.
+        "fixed_bindings": {"local_declaration_statement": ("const", True), "field_declaration": ("const", True)},
         "local_binding": {"variable_declarator": ("name", None)},
         "switch_types": {"switch_statement": ("value", "switch_section")},
         "immutable_modifiers": frozenset({"const", "readonly"}),
@@ -1489,6 +1503,9 @@ LANG_SPEC: dict[str, LangSpec] = {
         "declaration_types": ("const_item", "static_item", "let_declaration"),
         "module_resolution": "",
         "construct_types": {},
+        # `let` and `static` are fixed unless `mut` says otherwise; `const` always is.
+        "fixed_bindings": {"let_declaration": ("mutable_specifier", False),
+                           "static_item": ("mutable_specifier", False), "const_item": ("", True)},
         "local_binding": {"let_declaration": ("pattern", "value")},
         "switch_types": {"match_expression": ("value", "match_arm")},
         "immutable_modifiers": frozenset({"const", "static"}),
@@ -1669,6 +1686,7 @@ LANG_SPEC: dict[str, LangSpec] = {
         "declaration_types": (),
         "module_resolution": "",
         "construct_types": {},
+        "fixed_bindings": {},
         "local_binding": {"assignment": ("left", "right")},
         "switch_types": {"case": ("value", "when")},
         "immutable_modifiers": frozenset(),
@@ -1835,6 +1853,9 @@ LANG_SPEC: dict[str, LangSpec] = {
         "declaration_types": ("declaration",),
         "module_resolution": "",
         "construct_types": {},
+        # `const` qualifies the declared object only when the declarator is a plain name:
+        # `const char *p` is a mutable pointer to const chars, and its name is not a plain one.
+        "fixed_bindings": {"declaration": ("const", True)},
         "local_binding": {"init_declarator": ("declarator", "value")},
         "switch_types": {"switch_statement": ("condition", "case_statement")},
         "immutable_modifiers": frozenset({"const"}),
@@ -2016,6 +2037,7 @@ LANG_SPEC: dict[str, LangSpec] = {
         "declaration_types": ("const_declaration", "var_declaration"),
         "module_resolution": "",
         "construct_types": {},
+        "fixed_bindings": {"const_declaration": ("", True)},
         "local_binding": {"short_var_declaration": ("left", "right")},
         "switch_types": {"expression_switch_statement": ("value", "expression_case")},
         "immutable_modifiers": frozenset({"const"}),

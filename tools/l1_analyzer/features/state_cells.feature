@@ -21,9 +21,57 @@ Feature: state_cells — how wide a keyed access is, and how many cells the writ
 
   Scenario: is_unbounded_value decides whether a value ranges over a domain nobody can enumerate
     Given a value node and the language spec
-    When is_unbounded_value unwraps it and tests it against the grammar's literal types
-    Then it is true for a parameter or a variable, and false for a literal
+    When is_unbounded_value unwraps it and asks literal_key which literal it stands for
+    Then it is true for a parameter or a variable, and false for a literal or a name fixed to one
     But a missing node counts as bounded, so an absent key never makes a read unbounded on its own
+
+  Scenario: literal_key finds the literal a key stands for
+    Given a key node and the language spec
+    When literal_key unwraps it and, for a name, looks for the binding the read sees
+    Then a literal stands for itself, and a name bound by a declaration that cannot be reassigned to a literal stands for that literal
+    But any other name, or a name in a language that declares no such binding, stands for no single value
+
+  Scenario: _fixed_literal resolves a name through its lexical scope to the literal it is fixed to
+    Given a name read as a key
+    When _fixed_literal climbs from the read to the nearest enclosing node that binds the name
+    Then it returns the initialiser when that binding is fixed, single in its scope and initialised to one literal
+    But a parameter or loop binding nearer the read, a reassignable binding, a template that interpolates, two bindings in one scope, or a binding after the read inside a function, all give nothing
+
+  Scenario: _ancestors lists a node and everything above it
+    Given a node
+    When _ancestors climbs to the root
+    Then it returns the node first and the root last
+    But a root alone is a list of one
+
+  Scenario: _bound_on_the_way lists the names a scope binds without a declaration statement
+    Given a scope on the way up from a read, and the child the read came up through
+    When _bound_on_the_way reads its parameters, its loop or range binding and any pattern a branch or arm binds
+    Then it returns every name those bind, which shadow any declaration further out
+    But the child the read came up through is skipped, so a default value is not taken for the parameter it defaults
+
+  Scenario: _declarations_in lists the declaration statements directly in a scope
+    Given a scope
+    When _declarations_in reads its children against the language's declaration rows
+    Then it returns each declaration, looking through an export to the one it exports
+    But a declaration nested deeper belongs to a narrower scope, and is not listed here
+
+  Scenario: _declared pairs every name a declaration binds with its initialiser
+    Given a declaration statement
+    When _declared reads its declarators, and the name and value of a Rust or Go constant
+    Then a plain name comes with its initialiser, pairing a list of names with a list of values one to one
+    But a name inside a pattern or behind a pointer comes with none, so it binds without settling
+
+  Scenario: _paired pairs one binding's name with its value
+    Given a declarator's name and its value
+    When _paired reads the name
+    Then a plain name is paired with the value, and Go's list of names with its list of values
+    But every name inside anything else is paired with nothing
+
+  Scenario: _is_fixed decides whether a declaration's bindings can never be reassigned
+    Given a declaration statement
+    When _is_fixed looks for the language's marker among its children and grandchildren
+    Then it is fixed when the marker is present and presence fixes it, as `const` does, or absent and presence unfixes it, as Rust's `mut` does
+    But a declaration with no row is never fixed, and an empty marker fixes outright, as Go's `const` does
 
   Scenario: cell_key names the one discriminator a literal key owns
     Given the key node of a keyed access
@@ -35,7 +83,7 @@ Feature: state_cells — how wide a keyed access is, and how many cells the writ
   Scenario: keyed_read grades a read of the collection at a key
     Given the key node, the language spec and the number of cells the writes can create, which may be unknown
     When keyed_read tests whether the key is bounded
-    Then an unbounded key yields an unbounded partition, and a literal key yields a two-class split keyed on the literal's text
+    Then an unbounded key yields an unbounded partition, and a literal key yields a two-class split keyed on the literal's text, the literal a fixed name stands for included
     And the split is ordered only when the literal is numeric, because a numbered position has a neighbour and a named one does not
     But an unbounded key over a known cell set reaches the cells and absent instead, and every such read shares that one discriminator, since a read cannot observe a cell no write created
 

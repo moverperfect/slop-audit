@@ -31,6 +31,7 @@ from l1_analyzer.state_cells import cell_key as _cell_key
 from l1_analyzer.state_cells import is_closed_set as _is_closed_set
 from l1_analyzer.state_cells import is_unbounded_value as _is_unbounded_value
 from l1_analyzer.state_cells import keyed_read as _keyed_read
+from l1_analyzer.state_cells import literal_key as _literal_key
 from l1_analyzer.state_cells import membership_operands as _membership_operands
 from l1_analyzer.state_partition import (
     DYNAMIC_DISPATCH,
@@ -669,7 +670,7 @@ def _flow(node: Node | None, sp: LangSpec, closed_sets: dict[str, int | None], c
                     # about a position, and merging those under-counts. That direction is
                     # the one this module already declares safe for a measure that only
                     # accuses, and the over-count it replaces was not.
-                    return state_partition.finite(2, False, _cell_key(left))
+                    return state_partition.finite(2, False, _cell_key(_literal_key(left, sp) or left))
                 return state_partition.unbounded()
             if _is_closed_set(right, closed_sets):                                 # S in FIXED
                 return state_partition.membership_reach(right, closed_sets)
