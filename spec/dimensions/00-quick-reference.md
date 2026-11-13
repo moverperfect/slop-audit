@@ -105,8 +105,8 @@ Lifecycle category abbreviations: **SEC** = Security architecture, **DAT** = Dat
       <td>4.10</td>
       <td>CI/CD</td>
       <td>DVO</td>
-      <td>Automated test, build, deploy, security scan, with gating; ≥5 pipelines</td>
-      <td>Count CI/CD pipeline definition files</td>
+      <td>Automated test, build, deploy, security scan, with gating; ≥5 of 6 gate categories</td>
+      <td>Count the gate categories the CI/CD pipelines cover (build, test, static checks, security scan, deploy, post-deploy verification)</td>
       <td>Zero pipelines; manual deploys only</td>
       <td>45m</td>
     </tr>

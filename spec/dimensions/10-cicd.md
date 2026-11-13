@@ -22,7 +22,7 @@
 
 **Layer 2 inspection procedure.**
 
-1. **Run Layer 1 indicator L1.10 first.** Layer 1's L1.10 (CI/CD pipeline configuration) already counts pipeline definition files. If L1.10 returned **0 pipelines**, this dimension scores *Absent* without further inspection. If L1.10 returned 1–4 pipelines, the Layer 2 form scores *Partial* at best.
+1. **Run Layer 1 indicator L1.10 first.** Layer 1's L1.10 (CI/CD pipeline configuration) already reads which of six gate categories the pipeline definitions cover: build, test, static checks, security scan, deploy and post-deploy verification, each counted once however many files carry it (amended 2026-11-13 in this fork; see `research/amendments/amendment-2026-11-13-l1-10-gate-categories.md`). If L1.10 returned **0 categories**, this dimension scores *Absent* without further inspection. If L1.10 returned 1–4 categories, the Layer 2 form scores *Partial* at best, and its details name the categories that are missing.
 2. **Inspect what each pipeline actually does.** Open each pipeline definition file. For each pipeline, identify whether it: (a) compiles or builds the application, (b) runs unit tests, (c) runs integration tests, (d) runs security scans, (e) deploys to an environment, (f) does nothing meaningful (a placeholder pipeline that just runs `echo`).
 3. **Inspect the security scanning.** Determine which security scans are configured (Dependabot, Snyk, Trivy, GitGuardian, CodeQL, Semgrep, SonarQube, FOSSA). The presence of scanning configuration is a Layer 2 check; whether the alerts produced are actually monitored is a Layer 3 question.
 4. **Inspect the pre-commit hooks.** Look for `.pre-commit-config.yaml`, `husky`, `lefthook`, or equivalent. Pre-commit hooks are the local-machine equivalent of CI gates and catch issues before they reach the pipeline. (Overlaps with L1.9.)
@@ -69,7 +69,7 @@
 
 **Example absence (Java / no CI).** A Java application with no `.github/workflows/`, no `Jenkinsfile`, no `.gitlab-ci.yml`, no `azure-pipelines.yml`. The repository has 14 contributors over 3 years and 2,847 commits. There is a `build.sh` script in the repository root that runs `mvn clean install`, but it is run by developers on their laptops, not by any automation. There are 47 test files in `src/test/java/`, but the assessor confirms by running `mvn test` that 12 of them have been broken for over a year (compilation errors, deleted classes referenced, missing dependencies). The team's deploy process is documented in a Confluence page titled "How to deploy" that begins with "SSH into prod-app-01 as the `appuser` user, then run `cd /opt/app && git pull && mvn package && systemctl restart app`." A failed deploy two months ago resulted in 4 hours of downtime because the developer who knew how to roll back was on vacation.
 
-**Time budget.** Approximately 60 minutes for an experienced assessor: 20 to 30 minutes for the Layer 2 inspection (L1.10 already counted the pipelines), 30 to 40 minutes for the Layer 3 marker assessment.
+**Time budget.** Approximately 60 minutes for an experienced assessor: 20 to 30 minutes for the Layer 2 inspection (L1.10 already read which gates the pipelines run), 30 to 40 minutes for the Layer 3 marker assessment.
 
 ---
 

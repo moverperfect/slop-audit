@@ -162,7 +162,7 @@ CARD_COPY: dict[str, str] = {
     "meaning.L1.16": "Harmless on its own, but an AI smell: lines left with trailing whitespace mean no editor or formatter touched the file between 'the AI wrote it' and 'it landed on main', which usually means no human reviewed it either.",
     "label.L1.10": "Automated build-and-test pipelines",
     "tech.L1.10": "L1.10 · CI/CD pipelines",
-    "meaning.L1.10": "How many pipelines build, test, and gate each change before it ships. Zero means every merge is a manual act of faith.",
+    "meaning.L1.10": "How many of six gates the pipelines run on each change: build, test, static checks, security scan, deploy, and checking the deployment. Each counts once however many files carry it. Zero means every merge is a manual act of faith.",
     "label.L1.11": "A reproducible environment",
     "tech.L1.11": "L1.11 · containerization",
     "meaning.L1.11": "Whether the repo ships a container or orchestration config so it runs the same on every machine. The container is the constraint that keeps an AI's environment-coupling habits from becoming the classic 'it works on *my* machine.'",
@@ -228,7 +228,7 @@ _AUDIT: tuple[MetricSpec, ...] = (
     {"key": "L1.15", "unit": "/kloc", "maps_to": [{"dimension": "Dependency injection · 4.12", "frameworks": "NIST SA-11 · ISO/IEC 25010 (testability)"}]},
     {"key": "L1.17", "unit": "%", "maps_to": [{"dimension": "Tech-debt management · 4.17", "frameworks": "NIST CM-8 / SA-15 · SOC 2 CC7.1 · ISO/IEC 25010"}]},
     {"key": "L1.16", "unit": "%", "maps_to": [{"dimension": "SDLC with AI safeguards · 4.16", "frameworks": "NIST SA-3 / SA-8 · SOC 2 CC8.1 · OSFI B-13 §4.1.3"}]},
-    {"key": "L1.10", "unit": "", "maps_to": [{"dimension": "CI/CD · 4.10", "frameworks": "NIST SA-11 / SA-15 / CM-3 · SOC 2 CC8.1 · OSFI B-13 §4.7 · SSDF PW.7"}]},
+    {"key": "L1.10", "unit": "/6", "maps_to": [{"dimension": "CI/CD · 4.10", "frameworks": "NIST SA-11 / SA-15 / CM-3 · SOC 2 CC8.1 · OSFI B-13 §4.7 · SSDF PW.7"}]},
     {"key": "L1.11", "unit": "", "maps_to": [{"dimension": "Containerization · 4.11", "frameworks": "NIST SP 800-190 · SP 800-53 SA-11 / SI-7"}]},
     {"key": "L1.9", "unit": "", "maps_to": [{"dimension": "CI/CD · 4.10 + SDLC safeguards · 4.16", "frameworks": "NIST SA-11 · SOC 2 CC8.1"}]},
 )

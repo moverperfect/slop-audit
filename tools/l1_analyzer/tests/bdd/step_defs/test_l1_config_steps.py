@@ -21,12 +21,26 @@ def given_no_precommit(tmp_path):
     return tmp_path
 
 
-@given(parsers.parse("a repo with {n:d} .github/workflows/*.yml files"), target_fixture="repo")
+@given(parsers.parse("a repo with {n:d} .github/workflows/*.yml files that run nothing"), target_fixture="repo")
 def given_ci(n, tmp_path):
     wf = tmp_path / ".github" / "workflows"
     wf.mkdir(parents=True)
     for i in range(n):
         (wf / f"ci{i}.yml").write_text("name: ci\non: push\n")
+    return tmp_path
+
+
+# One command per gate category, in the order L1.10 lists them.
+_GATE_COMMANDS = ("npx vite build", "npx vitest run", "npx eslint .", "npm audit", "npx wrangler deploy",
+                  "npx playwright test")
+
+
+@given(parsers.parse("a repo with one workflow running {n:d} gate categories"), target_fixture="repo")
+def given_gates(n, tmp_path):
+    wf = tmp_path / ".github" / "workflows"
+    wf.mkdir(parents=True)
+    steps = "".join(f"      - run: {command}\n" for command in _GATE_COMMANDS[:n])
+    (wf / "ci.yml").write_text("name: ci\non: push\njobs:\n  ci:\n    steps:\n" + steps)
     return tmp_path
 
 

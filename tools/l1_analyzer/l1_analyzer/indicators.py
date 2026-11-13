@@ -108,11 +108,9 @@ def band(value: float, healthy: float, slop: float, *, higher_is_better: bool) -
 
 
 def compute_config_indicators(repo: Path) -> Panel:
-    from l1_analyzer import ci_pipelines, containerization
+    from l1_analyzer import ci_gates, containerization
 
     has_precommit = (repo / ".pre-commit-config.yaml").exists() or (repo / ".husky").exists()
-    pipelines = ci_pipelines.find(repo)
-    ci_count = ci_pipelines.count(pipelines)
 
     # Each carries a details line naming what was looked for and where. These three shipped
     # a band and a value with no sentence, so a reader got Slop for the pre-commit indicator
@@ -125,11 +123,7 @@ def compute_config_indicators(repo: Path) -> Panel:
             "details": ("a pre-commit hook config is present" if has_precommit else
                         "no .pre-commit-config.yaml and no .husky directory at the repository root"),
         },
-        "L1.10": {
-            "value": ci_count,
-            "band": band(ci_count, 5, 1, higher_is_better=True),
-            "details": ci_pipelines.details(pipelines),
-        },
+        "L1.10": ci_gates.reading(ci_gates.read(repo)),
         "L1.11": containerization.reading(containerization.find(repo)),
     }
 from l1_analyzer.lang_cfg import (  # noqa: F401 - re-exported: every reader imports these from here

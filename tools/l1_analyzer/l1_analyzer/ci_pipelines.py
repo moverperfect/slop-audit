@@ -1,18 +1,16 @@
-"""L1.10's reading: the files in a repository that define a CI/CD pipeline.
+"""Finding the files in a repository that define a CI/CD pipeline, for L1.10.
 
-The canon counts "CI/CD pipeline definition files (`.github/workflows/*.yml`, `.gitlab-ci.yml`,
-`Jenkinsfile`, etc.)". Until 2026-11-12 the reader looked in `.github/workflows` and nowhere
-else, so a GitLab, Jenkins or Azure DevOps project read zero pipelines and banded Slop. An
-Astro site built, tested and deployed by Azure Pipelines on every change was told that every
-merge was a manual act of faith.
+L1.10 reads what those pipelines run (ci_gates); this module finds them. Until 2026-11-12 the
+reader looked in `.github/workflows` and nowhere else, so a GitLab, Jenkins or Azure DevOps
+project read zero pipelines and banded Slop. An Astro site built, tested and deployed by Azure
+Pipelines on every change was told that every merge was a manual act of faith.
 
 AZURE PIPELINES HAS NO FIXED PATH, which is why it takes most of this module. A definition is
 `azure-pipelines*.yml` by convention, or a YAML file under a `pipelines/` or `.azure-pipelines/`
 directory that opens a pipeline at its top level. The same directories hold TEMPLATES: steps,
 jobs and stages another pipeline pulls in with `template:`. A template is a piece of a pipeline,
-not a definition of one, so counting it would score a project for how finely it split its YAML.
-On the Astro site 20 of the 22 YAML files under `pipelines/` are templates, and counting them
-would have moved the band from Not Healthy to Healthy. They are disclosed and not counted.
+not a definition of one, so it is read where a definition includes it, with that definition's
+parameters, and never as a pipeline of its own.
 
 What this cannot see, said plainly. A pipeline whose definition lives in the CI service rather
 than in the repository, which is every classic Azure DevOps release and every Jenkins job
@@ -43,29 +41,31 @@ _TEMPLATE_REF = re.compile(r"""^\s*(?:-\s*)?template:\s*['"]?([^'"\s#@$]+)['"]?\
 
 
 class Pipelines(TypedDict):
-    """The pipeline definitions found, by the system that runs them, and the Azure templates
-    set aside so the reader can see what was not counted."""
-    github: int
-    gitlab: int
-    jenkins: int
-    azure: int
-    azure_templates: int
+    """The pipeline definitions found, by the system that runs them, each as a path from the
+    repository root, and the Azure files set aside as templates, which a definition includes
+    rather than runs on its own. ci_gates reads what every definition runs."""
+    github: list[str]
+    gitlab: list[str]
+    jenkins: list[str]
+    azure: list[str]
+    azure_templates: list[str]
 
 
 @boundary
 def find(repo: Path) -> Pipelines:
-    """Every pipeline definition file in the repository, counted by system.
+    """Every pipeline definition file in the repository, by system.
 
-    GitHub's count is the reader this replaced, read the same way, so a GitHub repository's
-    figure does not move. GitLab and Jenkins each read one file at the root, where both look."""
+    GitHub's workflows are read where GitHub runs them, `.github/workflows/*.yml` and `*.yaml`.
+    GitLab and Jenkins each read one file at the root, where both look."""
     workflows = repo / ".github" / "workflows"
     definitions, templates = azure_pipeline_definitions(_azure_candidates(repo))
     return {
-        "github": len(list(workflows.glob("*.yml"))) + len(list(workflows.glob("*.yaml"))),
-        "gitlab": int((repo / ".gitlab-ci.yml").is_file()),
-        "jenkins": int((repo / "Jenkinsfile").is_file()),
-        "azure": len(definitions),
-        "azure_templates": len(templates),
+        "github": sorted(p.relative_to(repo).as_posix()
+                         for pattern in ("*.yml", "*.yaml") for p in workflows.glob(pattern)),
+        "gitlab": [".gitlab-ci.yml"] if (repo / ".gitlab-ci.yml").is_file() else [],
+        "jenkins": ["Jenkinsfile"] if (repo / "Jenkinsfile").is_file() else [],
+        "azure": definitions,
+        "azure_templates": templates,
     }
 
 
@@ -105,27 +105,7 @@ def azure_pipeline_definitions(files: dict[str, str]) -> tuple[list[str], list[s
     return definitions, sorted(path for path in files if path in included)
 
 
-def count(found: Pipelines) -> int:
-    """The number L1.10 publishes: every definition, from every system. Templates are not
-    definitions and are not in it."""
+def definitions(found: Pipelines) -> list[str]:
+    """Every pipeline definition found, from every system, in a fixed order. Templates are not
+    definitions: each is read where a definition includes it."""
     return found["github"] + found["gitlab"] + found["jenkins"] + found["azure"]
-
-
-def details(found: Pipelines) -> str:
-    """The sentence beside the number: what was found where, or every place that was looked
-    in. A GitHub-only repository reads the sentence it always did."""
-    parts = []
-    if found["github"]:
-        parts.append(f"{found['github']} workflow file(s) in .github/workflows")
-    if found["gitlab"]:
-        parts.append(".gitlab-ci.yml")
-    if found["jenkins"]:
-        parts.append("a Jenkinsfile")
-    if found["azure"]:
-        parts.append(f"{found['azure']} Azure Pipelines definition(s)")
-    said = ", ".join(parts) if parts else (
-        "no pipeline definition files: no .yml or .yaml workflow files in .github/workflows, "
-        "no .gitlab-ci.yml, no Jenkinsfile and no Azure Pipelines YAML")
-    if found["azure_templates"]:
-        said += f" ({found['azure_templates']} templates they include are not counted)"
-    return said

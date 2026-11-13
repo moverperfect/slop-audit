@@ -576,7 +576,9 @@ def test_git_indicators_non_repo_is_na(tmp_path):
 def test_config_indicators_present(tmp_path):
     (tmp_path / ".pre-commit-config.yaml").write_text("repos: []\n")
     (tmp_path / ".github" / "workflows").mkdir(parents=True)
-    (tmp_path / ".github" / "workflows" / "ci.yml").write_text("name: ci\n")
+    # L1.10 counts the gate categories a pipeline runs, so the workflow runs one.
+    (tmp_path / ".github" / "workflows" / "ci.yml").write_text(
+        "name: ci\non: push\njobs:\n  t:\n    steps:\n      - run: pytest\n")
     (tmp_path / "Dockerfile").write_text("FROM python:3.12\n")
     res = indicators.compute_config_indicators(tmp_path)
     assert res["L1.9"]["band"] == "Healthy"
