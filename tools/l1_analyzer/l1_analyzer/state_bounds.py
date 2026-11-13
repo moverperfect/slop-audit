@@ -45,6 +45,7 @@ from tree_sitter import Node
 from l1_analyzer import (
     record_state,
     state_bounds_filters,
+    state_callees,
     state_census,
     state_enum,
     state_partition,
@@ -58,6 +59,7 @@ from l1_analyzer.indicators import (
 )
 from l1_analyzer.lang_spec import LANG_SPEC, LangSpec
 from l1_analyzer.scope import PRODUCTION_WITHOUT_CONFORMANCE
+from l1_analyzer.state_callees import CallContext
 from l1_analyzer.state_cells import collect_closed_sets as _collect_closed_sets
 from l1_analyzer.state_cells import write_key_bound as _write_key_bound
 from l1_analyzer.state_const import collect_immutable_ctors as _collect_immutable_ctors
@@ -181,7 +183,7 @@ def _binding_line(refs: list[Node], sp: LangSpec) -> int:
     return min((r.start_point[0] + 1 for r in refs), default=1)
 
 
-def _finding(key: str, refs: list[Node], rel: str, sp: LangSpec, closed_sets: dict[str, int | None], immutable_ctors: set[str], instance: bool, hidden: frozenset[str]) -> Finding:
+def _finding(key: str, refs: list[Node], rel: str, sp: LangSpec, closed_sets: dict[str, int | None], immutable_ctors: set[str], instance: bool, hidden: frozenset[str], calls: CallContext | None) -> Finding:
     # A state the language DECLARES immutable is settled before any reach is read: one
     # value, one class. This row replaced a `sp is LANG_SPEC["python"]` identity check,
     # which is the language conditional welded into shared code that this project objects
@@ -213,7 +215,7 @@ def _finding(key: str, refs: list[Node], rel: str, sp: LangSpec, closed_sets: di
             # The recursion budget, stated where the recursion starts. It used to be a
             # default on `_categorize` itself, so the one caller that sets it and the many
             # recursive calls that spend it looked identical at the call site.
-            [_categorize(r, sp, closed_sets, cells, _REACH_DEPTH) for r in refs], refs)
+            [_categorize(r, sp, closed_sets, cells, _REACH_DEPTH, calls) for r in refs], refs)
         # An invoked slot earns NEUTRAL from the compositional rule; that rule has premises.
         if verdict == NEUTRAL and _injected_slot_premise_fails(refs, sp, instance):
             verdict, drives, silence, construct, partition, silence_line = (
@@ -263,7 +265,8 @@ def _named(name: str, sp: LangSpec) -> Callable[[Node], bool]:
     return spells_it
 
 
-def _analyze_file(root: Node, rel: str, sp: LangSpec, cfg: LangCfg, immutable_ctors: set[str]) -> FileRead:
+def _analyze_file(root: Node, rel: str, sp: LangSpec, cfg: LangCfg, immutable_ctors: set[str],
+                  calls: CallContext | None) -> FileRead:
     # An empty TABLE, not an empty set. The parameter is declared eight times over as a
     # mapping of name to bound and three readers call `.get` on it; a set has none. It never
     # raised, because the predicate gating each of those reads asks `name in closed_sets`
@@ -285,14 +288,14 @@ def _analyze_file(root: Node, rel: str, sp: LangSpec, cfg: LangCfg, immutable_ct
         refs = _bound_to(_refs(root, _named(name, sp)), name, sp)
         if refs:
             findings.append(_finding(name, refs, rel, sp, closed_sets, immutable_ctors,
-                                     instance=False, hidden=hidden))
+                                     instance=False, hidden=hidden, calls=calls))
             judged |= state_enum.sites_of(module, name)
 
     if sp["scope_by_receiver"]:    # Go: state spans methods, grouped by receiver type
         for slot in state_enum.go_slots(root):
             findings.append(_finding(slot["state"], slot["refs"], rel, sp, closed_sets,
                                      immutable_ctors, instance=slot["writers_enumerable"],
-                                     hidden=hidden))
+                                     hidden=hidden, calls=calls))
             visited.add(slot["site"])
             judged.add(slot["site"])
 
@@ -303,7 +306,7 @@ def _analyze_file(root: Node, rel: str, sp: LangSpec, cfg: LangCfg, immutable_ct
             refs = _state_refs(cls, key, sp)
             if refs:
                 findings.append(_finding(key, refs, rel, sp, closed_sets, immutable_ctors,
-                                         instance=True, hidden=hidden))
+                                         instance=True, hidden=hidden, calls=calls))
                 judged |= state_enum.sites_of(cands, key)
 
     # State declared inside a record, which neither enumerator above can reach: both work
@@ -316,7 +319,7 @@ def _analyze_file(root: Node, rel: str, sp: LangSpec, cfg: LangCfg, immutable_ct
     for slot in read["slots"]:
         findings.append(_finding(slot["state"], slot["refs"], rel, sp, closed_sets,
                                  immutable_ctors, instance=slot["writers_enumerable"],
-                                 hidden=hidden))
+                                 hidden=hidden, calls=calls))
         judged.add(slot["site"])
 
     return {"findings": findings, "visited": visited, "judged": judged}
@@ -386,8 +389,13 @@ def classify(repo: Path, lang: str) -> StateReading:
     # measurement's name, which is the defect this number replaced.
     visited: dict[str, set[Site]] = {}
     judged: dict[str, set[Site]] = {}
+    # Where the files' callees live, read once for the run: the project's packages and
+    # aliases. None for a language whose module system the reader does not resolve, which
+    # leaves every callee's silence exactly as it was.
+    project = state_callees.project(repo, sp)
     for root, rel in roots:
-        read = _analyze_file(root, rel, sp, cfg, immutable_ctors)
+        calls = state_callees.context(project, root) if project is not None else None
+        read = _analyze_file(root, rel, sp, cfg, immutable_ctors, calls)
         findings.extend(read["findings"])
         visited[rel] = read["visited"]
         judged[rel] = read["judged"]

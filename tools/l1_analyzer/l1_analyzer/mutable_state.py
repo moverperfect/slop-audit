@@ -502,7 +502,9 @@ def _bounded_state_keys(root: Node, rel: str, lang: str, cfg: LangCfg, immutable
     state_bounds imports from indicators, which imports this module at its foot.
     """
     from l1_analyzer import state_bounds
-    read = state_bounds._analyze_file(root, rel, LANG_SPEC[lang], cfg, immutable_ctors)
+    # No call context: L1.18's ratio is a frozen measure, and where a callee lives is an
+    # L1.18b reading it must not borrow.
+    read = state_bounds._analyze_file(root, rel, LANG_SPEC[lang], cfg, immutable_ctors, None)
     return {
         f["state"] for f in read["findings"]
         if f["verdict"] == state_bounds.NEUTRAL and f["drives_decision"] and f["partition"]["counted"]

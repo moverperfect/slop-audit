@@ -75,6 +75,9 @@ class LangSpec(TypedDict, total=False):
     # field_declaration, `const` on C's declaration. The declared-constant rule reads the one
     # that binds the state and no other, so a neighbour's `const` cannot settle it.
     declaration_types: tuple[str, ...]
+    # The module system the state reader can resolve a callee's import through: "node" for
+    # ES modules with a package.json, empty for a language whose imports it does not read.
+    module_resolution: str
     local_binding: dict[str, tuple[str, str | None]]
     # A match or switch, as {node type: (subject field, arm type)}. Two readers want it: the
     # state classifier, which has read it since it was written, and clause 1, for which a
@@ -631,6 +634,7 @@ LANG_SPEC: dict[str, LangSpec] = {
         "expression_body_types": {},
         "name_reference_types": ("identifier",),
         "declaration_types": (),
+        "module_resolution": "",
         "local_binding": {"assignment": ("left", "right")},
         "switch_types": {"match_statement": ("subject", "case_clause")},
         "immutable_modifiers": frozenset(),
@@ -960,6 +964,8 @@ LANG_SPEC: dict[str, LangSpec] = {
         "name_reference_types": ("identifier", "shorthand_property_identifier"),
         # `const` sits on the lexical_declaration around the declarator, `readonly` on a field.
         "declaration_types": ("lexical_declaration", "variable_declaration", "field_definition"),
+        # ES modules, resolved against the project's package.json and tsconfig.json.
+        "module_resolution": "node",
         "local_binding": {"variable_declarator": ("name", "value")},
         "switch_types": {"switch_statement": ("value", "switch_case")},
         "immutable_modifiers": frozenset({"const"}),
@@ -1132,6 +1138,7 @@ LANG_SPEC: dict[str, LangSpec] = {
         "expression_body_types": {},
         "name_reference_types": ("identifier",),
         "declaration_types": ("field_declaration", "local_variable_declaration", "constant_declaration"),
+        "module_resolution": "",
         "local_binding": {"variable_declarator": ("name", "value")},
         "switch_types": {"switch_expression": ("condition", "switch_block_statement_group")},
         "immutable_modifiers": frozenset({"final"}),
@@ -1289,6 +1296,7 @@ LANG_SPEC: dict[str, LangSpec] = {
         "expression_body_types": {},
         "name_reference_types": ("identifier",),
         "declaration_types": ("field_declaration", "local_declaration_statement", "property_declaration"),
+        "module_resolution": "",
         "local_binding": {"variable_declarator": ("name", None)},
         "switch_types": {"switch_statement": ("value", "switch_section")},
         "immutable_modifiers": frozenset({"const", "readonly"}),
@@ -1461,6 +1469,7 @@ LANG_SPEC: dict[str, LangSpec] = {
         "expression_body_types": {},
         "name_reference_types": ("identifier",),
         "declaration_types": ("const_item", "static_item", "let_declaration"),
+        "module_resolution": "",
         "local_binding": {"let_declaration": ("pattern", "value")},
         "switch_types": {"match_expression": ("value", "match_arm")},
         "immutable_modifiers": frozenset({"const", "static"}),
@@ -1638,6 +1647,7 @@ LANG_SPEC: dict[str, LangSpec] = {
         "expression_body_types": {},
         "name_reference_types": ("identifier",),
         "declaration_types": (),
+        "module_resolution": "",
         "local_binding": {"assignment": ("left", "right")},
         "switch_types": {"case": ("value", "when")},
         "immutable_modifiers": frozenset(),
@@ -1801,6 +1811,7 @@ LANG_SPEC: dict[str, LangSpec] = {
         "expression_body_types": {},
         "name_reference_types": ("identifier",),
         "declaration_types": ("declaration",),
+        "module_resolution": "",
         "local_binding": {"init_declarator": ("declarator", "value")},
         "switch_types": {"switch_statement": ("condition", "case_statement")},
         "immutable_modifiers": frozenset({"const"}),
@@ -1979,6 +1990,7 @@ LANG_SPEC: dict[str, LangSpec] = {
         "expression_body_types": {},
         "name_reference_types": ("identifier",),
         "declaration_types": ("const_declaration", "var_declaration"),
+        "module_resolution": "",
         "local_binding": {"short_var_declaration": ("left", "right")},
         "switch_types": {"expression_switch_statement": ("value", "expression_case")},
         "immutable_modifiers": frozenset({"const"}),

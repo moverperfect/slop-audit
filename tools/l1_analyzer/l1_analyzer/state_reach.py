@@ -22,9 +22,11 @@ from __future__ import annotations
 from tree_sitter import Node
 
 from l1_analyzer import (
+    state_callees,
     state_partition,
 )
 from l1_analyzer.lang_spec import COMPARISON_OPS, LangSpec
+from l1_analyzer.state_callees import CallContext
 from l1_analyzer.state_cells import cell_key as _cell_key
 from l1_analyzer.state_cells import is_closed_set as _is_closed_set
 from l1_analyzer.state_cells import is_unbounded_value as _is_unbounded_value
@@ -197,7 +199,7 @@ def _bound_to_the_discard(value: Node, sp: LangSpec) -> bool:
 
 
 def _follow_local(ref: Node, name: Node, sp: LangSpec, closed_sets: dict[str, int | None],
-                  cells: int | None, depth: int) -> Reach:
+                  cells: int | None, depth: int, calls: CallContext | None) -> Reach:
     """What the state reaches THROUGH a local it was copied into.
 
     The largest family of unread constructs in the corpus, 194 sites, and it needed a row
@@ -227,7 +229,7 @@ def _follow_local(ref: Node, name: Node, sp: LangSpec, closed_sets: dict[str, in
             if not _same(n, name)]
     if not uses:
         return state_partition.output()   # bound and never read: the value came to rest
-    reaches = [_categorize(u, sp, closed_sets, cells, depth - 1) for u in uses]
+    reaches = [_categorize(u, sp, closed_sets, cells, depth - 1, calls) for u in uses]
     kinds = [r["kind"] for r in reaches]
     if state_partition.UNDECIDED in kinds:
         return next(r for r in reaches if r["kind"] == state_partition.UNDECIDED)
@@ -267,8 +269,13 @@ def _switch_partition(subject: Node, switch: Node, arm_type: str) -> Reach:
 _REACH_DEPTH = 3
 
 
-def _categorize(ref: Node, sp: LangSpec, closed_sets: dict[str, int | None], cells: int | None, depth: int) -> Reach:
-    """How this single reference to a state value is consumed."""
+def _categorize(ref: Node, sp: LangSpec, closed_sets: dict[str, int | None], cells: int | None, depth: int,
+                calls: CallContext | None) -> Reach:
+    """How this single reference to a state value is consumed.
+
+    `calls` is the file's knowledge of where its callees live, for the argument rows, and
+    None where the caller reads no module system: every language but JavaScript and
+    TypeScript, and L1.18, which must not move."""
     parent = ref.parent
     if parent is None:
         return state_partition.output()
@@ -306,7 +313,7 @@ def _categorize(ref: Node, sp: LangSpec, closed_sets: dict[str, int | None], cel
             and _same(_field(parent, name_field), ref)):
         if _is_write_target(parent, parent.parent, sp):
             return state_partition.write()
-        return _flow(parent, sp, closed_sets, cells, depth)
+        return _flow(parent, sp, closed_sets, cells, depth, calls)
 
     # THE STATE COPIED INTO A LOCAL. `var entries = _entries;` and then whatever the method
     # does with `entries`. 194 sites in the corpus came out as constructs with no rule, and
@@ -314,7 +321,7 @@ def _categorize(ref: Node, sp: LangSpec, closed_sets: dict[str, int | None], cel
     # the write row, so a local that is itself written keeps the write verdict.
     local = _local_binding_name(ref, sp)
     if local is not None:
-        return _follow_local(ref, local, sp, closed_sets, cells, depth)
+        return _follow_local(ref, local, sp, closed_sets, cells, depth, calls)
 
     # THE STATE IS A SWITCH SUBJECT. Its value selects one arm, and the arms are countable
     # from the tree, so this is the one row here that produces CLASSES rather than merely
@@ -341,7 +348,7 @@ def _categorize(ref: Node, sp: LangSpec, closed_sets: dict[str, int | None], cel
     # checks that make this a proof rather than an assumption are per-attribute, and live in
     # _injected_slot_premise_fails.
     if not sp["flat_call"] and parent.type in sp["call_types"] and _same(_field(parent, sp["call_fn"]), ref):
-        return _flow(parent, sp, closed_sets, cells, depth)
+        return _flow(parent, sp, closed_sets, cells, depth, calls)
 
     # S[x] read : indexed by x. Unbounded key -> unbounded partition.
     if parent.type in sp["subscript_types"] and _same(_sub_collection(parent, sp), ref):
@@ -350,7 +357,7 @@ def _categorize(ref: Node, sp: LangSpec, closed_sets: dict[str, int | None], cel
     # S.attr : mutating method -> write; keyed map read -> subscript-like; else flows on.
     # Nested-call languages only; flat-call languages (Java, Ruby) handle receiver.method
     # in the branch below, where the member access and the call are one node.
-    through_member = _member_reach(ref, parent, sp, closed_sets, cells, depth)
+    through_member = _member_reach(ref, parent, sp, closed_sets, cells, depth, calls)
     if through_member is not None:
         return through_member
 
@@ -363,18 +370,11 @@ def _categorize(ref: Node, sp: LangSpec, closed_sets: dict[str, int | None], cel
             return state_partition.write()
         if name in sp["keyed_read"]:
             return _keyed_read(_first_arg(parent, sp), sp, cells)
-        return _flow(parent, sp, closed_sets, cells, depth)
+        return _flow(parent, sp, closed_sets, cells, depth, calls)
 
     # f(..., S, ...) : argument to a call.
     if parent.type in sp["arglist_types"]:
-        fname = _callee_name(parent.parent, sp)
-        if fname in sp["writing_builtins"]:
-            return state_partition.write()      # `delete(m, k)`: removes and returns nothing
-        if fname in _BOUNDED_BUILTINS or fname in sp["extra_bounded"]:
-            return _flow(parent.parent, sp, closed_sets, cells, depth)
-        if fname in _EFFECT_CALLS:
-            return state_partition.output()
-        return state_partition.silence_kind(parent.parent, sp)
+        return _argument_reach(ref, parent.parent, sp, closed_sets, cells, depth, calls)
 
     # Not a write, a call target, a subscript, a member access or an argument: the parent
     # does not CONSUME the value, so the reference is the value itself and the question
@@ -382,7 +382,7 @@ def _categorize(ref: Node, sp: LangSpec, closed_sets: dict[str, int | None], cel
     # row that says "the host construct is transparent, follow the flow" - and `_flow`
     # below is where the table ends. It matters which of the two is the last one, because
     # only the last one can be the total handler and only one of them can be it.
-    return _flow(ref, sp, closed_sets, cells, depth)
+    return _flow(ref, sp, closed_sets, cells, depth, calls)
 
 
 def _iterated_reach(value: Node, parent: Node, sp: LangSpec, cells: int | None) -> Reach | None:
@@ -419,7 +419,7 @@ def _iterated_reach(value: Node, parent: Node, sp: LangSpec, cells: int | None) 
 
 
 def _member_reach(value: Node, parent: Node, sp: LangSpec, closed_sets: dict[str, int | None],
-                  cells: int | None, depth: int) -> Reach | None:
+                  cells: int | None, depth: int, calls: CallContext | None) -> Reach | None:
     """How a value reaches on when a member access is taken off it, or None when this shape
     is not that.
 
@@ -453,12 +453,12 @@ def _member_reach(value: Node, parent: Node, sp: LangSpec, closed_sets: dict[str
         # write never sees the branch on it.
         out_local = _out_argument_local(gp, sp)
         if out_local is not None:
-            return _follow_local(value, out_local, sp, closed_sets, cells, depth)
+            return _follow_local(value, out_local, sp, closed_sets, cells, depth, calls)
         return state_partition.write()
     if called and attr in sp["keyed_read"]:
         return _keyed_read(_first_arg(gp, sp), sp, cells)
     if called:
-        return _flow(gp, sp, closed_sets, cells, depth)   # result flows on (.clone(), .len(), an accessor)
+        return _flow(gp, sp, closed_sets, cells, depth, calls)   # result flows on (.clone(), .len(), an accessor)
     # A PROPERTY STORED ONTO THE VALUE: `S.attr = v`. It is `S[k] = v` with a fixed key, and
     # in JavaScript it is literally `S["attr"] = v`, which has always been a write. Followed
     # on as a value it reached the left side of an assignment, where no row reads anything,
@@ -468,10 +468,11 @@ def _member_reach(value: Node, parent: Node, sp: LangSpec, closed_sets: dict[str
         if _reads_its_own_target(value, sp):
             return _categorize_read(value, sp, closed_sets, cells)
         return state_partition.write()
-    return _flow(parent, sp, closed_sets, cells, depth)   # plain field access: self.x.y
+    return _flow(parent, sp, closed_sets, cells, depth, calls)   # plain field access: self.x.y
 
 
-def _flow(node: Node | None, sp: LangSpec, closed_sets: dict[str, int | None], cells: int | None, depth: int) -> Reach:
+def _flow(node: Node | None, sp: LangSpec, closed_sets: dict[str, int | None], cells: int | None, depth: int,
+          calls: CallContext | None) -> Reach:
     """Categorise how a value derived from the state (node) reaches a decision.
 
     An absent node reaches no decision, and that is the same answer as a node with nothing
@@ -524,7 +525,7 @@ def _flow(node: Node | None, sp: LangSpec, closed_sets: dict[str, int | None], c
     # not app - so exclude nodes that are themselves a call.
     if (not sp["flat_call"] and node.type not in sp["call_types"]
             and parent.type in sp["call_types"] and _same(_field(parent, sp["call_fn"]), node)):
-        return _flow(parent, sp, closed_sets, cells, depth)
+        return _flow(parent, sp, closed_sets, cells, depth, calls)
     # A MEMBER ACCESS TAKEN OFF THIS VALUE, which is the other half of every method chain.
     # The row above walks from a field access to the call it supplies; this walks from a
     # call result to the next field access, and without it a chain of two calls had a rule
@@ -535,7 +536,7 @@ def _flow(node: Node | None, sp: LangSpec, closed_sets: dict[str, int | None], c
     # It sits above the rows that store, alias and pass through, because those ask what
     # happens to a value and this asks what is taken off it, and a chain is the second
     # question before it is ever the first.
-    through_member = _member_reach(node, parent, sp, closed_sets, cells, depth)
+    through_member = _member_reach(node, parent, sp, closed_sets, cells, depth, calls)
     if through_member is not None:
         return through_member
     # A LOOP WALKING THIS VALUE, asked here as well as in the categoriser. A chain that ends
@@ -603,7 +604,7 @@ def _flow(node: Node | None, sp: LangSpec, closed_sets: dict[str, int | None], c
     # something, which is the commoner half. Both hand off to the same walk.
     local = _local_binding_name(node, sp)
     if local is not None:
-        return _follow_local(node, local, sp, closed_sets, cells, depth)
+        return _follow_local(node, local, sp, closed_sets, cells, depth, calls)
     # BOUND TO NOTHING: `let _ = self.deadline.take()`. The grammar hangs no pattern on that
     # declaration at all, so the reader above answers None and cannot say whether the value
     # went into a name it could follow or into the discard. An ABSENT pattern is the
@@ -625,27 +626,27 @@ def _flow(node: Node | None, sp: LangSpec, closed_sets: dict[str, int | None], c
     # below, which is why this is a row of its own rather than a pass-through.
     choices = sp["choice_types"].get(parent.type)
     if choices is not None and any(_same(_field(parent, f), node) for f in choices):
-        return _flow(parent, sp, closed_sets, cells, depth)
+        return _flow(parent, sp, closed_sets, cells, depth, calls)
     # A VALUE HELD BY A LITERAL: `[S]`, `{ a: S }`, `{ ...S }`. See _held for where it goes.
     entry = sp["holding_entry_types"].get(parent.type)
     if (entry is not None and _same(_field(parent, entry), node)
             and parent.parent is not None and parent.parent.type in sp["holding_types"]):
-        return _held(parent.parent, sp, closed_sets, cells, depth)
+        return _held(parent.parent, sp, closed_sets, cells, depth, calls)
     if parent.type in sp["holding_types"]:
-        return _held(parent, sp, closed_sets, cells, depth)
+        return _held(parent, sp, closed_sets, cells, depth, calls)
     # A transparent wrapper, EXCEPT where the operator consumes rather than wraps. Go spells
     # a channel receive `<-ch`, which is a unary_expression exactly as `-x` is, and
     # unary_expression is on the wrapper list. So a receive read as the channel flowing on
     # untouched, when what happens is that an element leaves the channel. Dropping the node
     # type from the list would take `-x` with it, so the operator is what decides.
     if parent.type in sp["passthrough_types"] and not _is_opaque_unary(parent, sp):
-        return _flow(parent, sp, closed_sets, cells, depth)
+        return _flow(parent, sp, closed_sets, cells, depth, calls)
     # The host WRITES this value where it stands: `n++`, `c.n++`, `@xs << x`. The host is
     # transparent for the flow, because it also produces a value and that value may still
     # reach a decision - `if (n++ > 3)` is a comparison whichever way the counter moves. The
     # row below settles what happens when nothing reads what the host produced.
     if _same(_written_in_place(parent, sp), node):
-        return _flow(parent, sp, closed_sets, cells, depth)
+        return _flow(parent, sp, closed_sets, cells, depth, calls)
     if parent.type in sp["comparison_types"]:
         mem = _membership_operands(parent, sp)
         if mem is not None:
@@ -677,7 +678,7 @@ def _flow(node: Node | None, sp: LangSpec, closed_sets: dict[str, int | None], c
             # cuts leave n+1 intervals that boundary values reach. Keyed on the comparison
             # text so the same cut written twice is one cut, not two.
             return state_partition.finite(2, True, f"cmp:{_text(parent)}")
-        return _flow(parent, sp, closed_sets, cells, depth)   # arithmetic / logical: derived value flows on
+        return _flow(parent, sp, closed_sets, cells, depth, calls)   # arithmetic / logical: derived value flows on
     # Truthiness is the SAME two-class split wherever it is written, so every site shares
     # one key: `if S:` in fifty methods is two classes, not fifty-one.
     if parent.type in sp["branch_types"] and _same(_field(parent, sp["branch_cond"]), node):
@@ -691,14 +692,7 @@ def _flow(node: Node | None, sp: LangSpec, closed_sets: dict[str, int | None], c
     if _same(_bare_condition(parent, sp), node):
         return state_partition.finite(2, True, "truthy")
     if parent.type in sp["arglist_types"]:
-        fname = _callee_name(parent.parent, sp)
-        if fname in sp["writing_builtins"]:
-            return state_partition.write()      # `delete(m, k)`: removes and returns nothing
-        if fname in _BOUNDED_BUILTINS or fname in sp["extra_bounded"]:
-            return _flow(parent.parent, sp, closed_sets, cells, depth)
-        if fname in _EFFECT_CALLS:
-            return state_partition.output()
-        return state_partition.silence_kind(parent.parent, sp)
+        return _argument_reach(node, parent.parent, sp, closed_sets, cells, depth, calls)
     if parent.type in sp["subscript_types"] and _same(_sub_collection(parent, sp), node):
         return _keyed_read(_sub_key(parent, sp), sp, cells)
     # THE VALUE AN IN-PLACE WRITE PRODUCED, WHICH NOTHING READS. Every row above has now been
@@ -718,8 +712,33 @@ def _flow(node: Node | None, sp: LangSpec, closed_sets: dict[str, int | None], c
     return state_partition.unmeasured(node.type, parent.type)
 
 
+def _argument_reach(value: Node, call: Node | None, sp: LangSpec, closed_sets: dict[str, int | None],
+                    cells: int | None, depth: int, calls: CallContext | None) -> Reach:
+    """f(..., S, ...): what a call does with a value handed to it, or whose silence it is.
+
+    The language's own functions first: a writing builtin is a write, a bounded one hands its
+    result on, an effect is output. Then, where the file's module system is read, a callee
+    imported from a package the project declares, or from Node's own modules, is the
+    adopter's boundary rather than ours: the code is under `node_modules`, which this reader
+    never opens, and an explicit contract at that boundary is what would make it decidable.
+    Everything else keeps the silence `silence_kind` gives it.
+
+    One function for both argument rows, the categoriser's and the flow's, which held the
+    same five lines twice."""
+    fname = _callee_name(call, sp)
+    if fname in sp["writing_builtins"]:
+        return state_partition.write()      # `delete(m, k)`: removes and returns nothing
+    if fname in _BOUNDED_BUILTINS or fname in sp["extra_bounded"]:
+        return _flow(call, sp, closed_sets, cells, depth, calls)
+    if fname in _EFFECT_CALLS:
+        return state_partition.output()
+    if calls is not None and state_callees.imported_from_a_package(call, calls, sp):
+        return state_partition.undecided(state_partition.EXTERNAL_BOUNDARY)
+    return state_partition.silence_kind(call, sp)
+
+
 def _held(literal: Node, sp: LangSpec, closed_sets: dict[str, int | None], cells: int | None,
-          depth: int) -> Reach:
+          depth: int, calls: CallContext | None) -> Reach:
     """Where a value goes once a literal holds it: `[S]`, `{ a: S }`, `{ ...S }`.
 
     A literal does not copy what it holds. `{ a: S }` holds a REFERENCE to S, and a spread's
@@ -750,13 +769,13 @@ def _held(literal: Node, sp: LangSpec, closed_sets: dict[str, int | None], cells
     if parent is None:
         return state_partition.output()
     if parent.type in sp["subscript_types"] and _same(_sub_collection(parent, sp), outer):
-        return _flow(parent, sp, closed_sets, cells, depth)
+        return _flow(parent, sp, closed_sets, cells, depth, calls)
     walked = sp["iterate_types"].get(parent.type)
     named_in_a_function = (_local_binding_name(outer, sp) is not None
                            and _enclosing_function(outer, sp) is not None)
     if named_in_a_function or (walked is not None and _same(_field(parent, walked), outer)):
         return state_partition.undecided(state_partition.MUTABLE_ALIAS)
-    return _flow(outer, sp, closed_sets, cells, depth)
+    return _flow(outer, sp, closed_sets, cells, depth, calls)
 
 
 def _enclosing_function(node: Node, sp: LangSpec) -> Node | None:

@@ -106,6 +106,13 @@ Feature: state_reach — how one reference to a piece of state reaches a decisio
     And an operand its language declares unread, such as a sizeof or a typeof, reaches no decision at all, because those ask about the type at compile time and never look at the value
     But when every row declines it returns unmeasured rather than output, because output is a verdict and the reader has not earned one
 
+  Scenario: _argument_reach reads what a call does with a value handed to it, or whose silence it is
+    Given a value passed as an argument, the call, and the file's call context
+    When _argument_reach checks the language's writing, bounded and effect builtins, then where the callee comes from
+    Then a writing builtin is a write, a bounded one hands its result on and an effect is output
+    And a plain name imported from a declared package or from Node's own modules is the adopter's external boundary, because the code is under node_modules and only a contract at that edge would make it decidable
+    But every other callee keeps the silence silence_kind gives it
+
   Scenario: _held follows a value an object or array literal holds, or names the alias it went under
     Given a value held by a literal, as an element, a property value or a spread
     When _held reads where the literal goes after reading through parentheses and casts

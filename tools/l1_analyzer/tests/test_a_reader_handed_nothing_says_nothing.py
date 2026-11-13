@@ -40,7 +40,7 @@ def test_a_comparison_reader_handed_nothing_returns_false():
 def test_a_flow_reader_handed_nothing_does_not_raise():
     """Whatever it answers, it must answer. A crash here loses the whole audit for a file
     that happened to hold a shape the parser left a hole in."""
-    state_reach._flow(None, LANG_SPEC["python"], {}, None, 0)
+    state_reach._flow(None, LANG_SPEC["python"], {}, None, 0, None)
 
 
 def test_an_attribution_reader_handed_nothing_says_so():
