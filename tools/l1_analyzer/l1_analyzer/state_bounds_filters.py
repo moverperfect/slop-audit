@@ -111,8 +111,58 @@ def _enclosing_function(ref: Node, sp: LangSpec) -> Node | None:
 
 def _drives_no_decision(refs: list[Node], sp: LangSpec) -> bool:
     """Rule B (carried value): no reference appears in a test expression, so the attribute
-    decides nothing. Unbounded data that never reaches a branch does not bound testability."""
-    return not any(reads.in_test(r, sp) for r in refs)
+    decides nothing. Unbounded data that never reaches a branch does not bound testability.
+
+    A LOOP WHOSE BODY TESTS THE ELEMENT is a test of the collection, since 2026-11-13. A loop
+    puts no reference to the state in a test: `for (const { pattern } of TABLE)` names TABLE
+    once, in the loop header. The body's `if (pattern.test(x))` tests every element, and which
+    branch runs depends on what the table holds. Reading only the state's own references, this
+    rule cleared three such tables on an Astro site. Every language with a loop row is read
+    the same way: Go's `range`, Rust's `for`, JavaScript's `for...of` and `for...in`."""
+    return not any(reads.in_test(r, sp) or _element_tested(r, sp) for r in refs)
+
+
+def _element_tested(ref: Node, sp: LangSpec) -> bool:
+    """Whether a loop walks this reference and its body puts the element it binds in a test
+    expression. A value derived from the element counts where it is written inside the test,
+    `if (pattern.test(x))`, which is how `in_test` already reads the state's own references."""
+    loop = _walking_loop(ref, sp)
+    if loop is None:
+        return False
+    node, binding_field = loop
+    binding = _field(node, binding_field)
+    names = {_text(n) for n in descendants(binding, "named")
+             if "identifier" in n.type and not n.type.startswith("property")} if binding is not None else set()
+    # Go hangs the range clause inside the for statement, which is the node with the body.
+    scope = node if _field(node, "body") is not None else node.parent
+    body = _field(scope, "body") if scope is not None else None
+    return bool(names) and body is not None and any(
+        n.type in sp["name_reference_types"] and _text(n) in names and reads.in_test(n, sp)
+        for n in descendants(body, "named"))
+
+
+def _walking_loop(ref: Node, sp: LangSpec) -> tuple[Node, str] | None:
+    """The loop that walks this reference, with the field that binds its element: walked
+    directly, through a wrapper such as `&`, or through a method chain taken off it, as
+    `self.items.iter()` is. None when no loop walks it, or the loop names no binding."""
+    cur = ref
+    while cur.parent is not None:
+        parent = cur.parent
+        walked = sp["iterate_types"].get(parent.type)
+        if walked is not None:
+            holder = _field(parent, walked)
+            if holder is None or not (_same(holder, cur) or _same(_unwrap_unary(holder, sp), cur)):
+                return None
+            binding = sp["iterate_binding"].get(parent.type)
+            return (parent, binding) if binding else None
+        chained = ((parent.type in sp["member_types"] and _same(_field(parent, sp["mem_object"]), cur))
+                   or (not sp["flat_call"] and parent.type in sp["call_types"]
+                       and _same(_field(parent, sp["call_fn"]), cur))
+                   or parent.type in sp["value_wrapper_types"])
+        if not chained:
+            return None
+        cur = parent
+    return None
 
 
 # --- Rule: write-once, receiver-aware --------------------------------------------

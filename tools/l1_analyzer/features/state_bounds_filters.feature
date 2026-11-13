@@ -35,7 +35,20 @@ Feature: state_bounds_filters — attribute-level false-positive filters for the
     Given every reference to one attribute
     When _drives_no_decision checks that none of them sits in a test expression
     Then it is true when the attribute decides nothing, so unbounded data that never reaches a branch does not bound testability
+    And a reference walked by a loop whose body puts the element in a test counts as a test, in every language with a loop row
     But an attribute with no references at all also passes, since nothing was found to contradict it
+
+  Scenario: _element_tested asks whether a loop over the reference tests the element it binds
+    Given one reference to an attribute
+    When _element_tested finds the loop that walks it and the names its element is bound to, then reads the loop's body
+    Then it is true when a reference to one of those names sits in a test expression in the body
+    But a reference no loop walks, a loop whose binding this language names no field for, or a body that tests nothing, is false
+
+  Scenario: _walking_loop finds the loop that walks a reference
+    Given one reference to an attribute
+    When _walking_loop climbs through wrappers and a method chain taken off the reference to the value a loop walks
+    Then it returns the loop and the field that binds its element
+    But anything else on the way up, or a loop walking something other than this value, gives nothing
 
   Scenario: _member_writes collects every assignment to the attribute anywhere in the class
     Given the class body and the attribute name

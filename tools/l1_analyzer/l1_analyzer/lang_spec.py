@@ -53,6 +53,10 @@ class LangSpec(TypedDict, total=False):
     # walked. Go's range clause names its own half too, and matched nothing but the type
     # until now by luck rather than by rule.
     iterate_types: dict[str, str]
+    # Beside each loop in `iterate_types`, the field that binds the element the body sees:
+    # `x` in `for x in v`, `{ a, b }` in `for (const { a, b } of S)`. The carried-value rule
+    # reads it to see whether the body branches on what the loop walks.
+    iterate_binding: dict[str, str]
     # The nodes that CHOOSE between values and evaluate to the one chosen, as {node type:
     # (the fields holding the choices)}. A value in a choice flows on as the node's value,
     # the same object, while the node's condition keeps its split in `branch_types`, which is
@@ -628,6 +632,7 @@ LANG_SPEC: dict[str, LangSpec] = {
         # example stale rather than the property wrong. Replacing that fixture needs a
         # construct still unread today, which is its own small piece of work.
         "iterate_types": {},
+        "iterate_binding": {},
         "choice_types": {},
         "holding_types": (),
         "holding_entry_types": {},
@@ -950,6 +955,7 @@ LANG_SPEC: dict[str, LangSpec] = {
         # `for (x of S)` and `for (k in S)` are one node, and `right` holds what is walked
         # whichever the operator: values or keys, the walk reads the cell set. Go's range row.
         "iterate_types": {"for_in_statement": "right"},
+        "iterate_binding": {"for_in_statement": "left"},
         # `c ? S : T` evaluates to S itself. The condition is a split, in branch_types.
         "choice_types": {"ternary_expression": ("consequence", "alternative")},
         # `[S]` and `{ a: S }` hold S by reference; a spread lands its elements in the
@@ -1132,6 +1138,7 @@ LANG_SPEC: dict[str, LangSpec] = {
         "cond_at_index": {},
         "writing_builtins": frozenset(),
         "iterate_types": {},
+        "iterate_binding": {},
         "choice_types": {},
         "holding_types": (),
         "holding_entry_types": {},
@@ -1290,6 +1297,7 @@ LANG_SPEC: dict[str, LangSpec] = {
         "cond_at_index": {},
         "writing_builtins": frozenset(),
         "iterate_types": {},
+        "iterate_binding": {},
         "choice_types": {},
         "holding_types": (),
         "holding_entry_types": {},
@@ -1463,6 +1471,7 @@ LANG_SPEC: dict[str, LangSpec] = {
         "cond_at_index": {},
         "writing_builtins": frozenset(),
         "iterate_types": {"for_expression": "value"},
+        "iterate_binding": {"for_expression": "pattern"},
         "choice_types": {},
         "holding_types": (),
         "holding_entry_types": {},
@@ -1641,6 +1650,7 @@ LANG_SPEC: dict[str, LangSpec] = {
         "cond_at_index": {},
         "writing_builtins": frozenset(),
         "iterate_types": {},
+        "iterate_binding": {},
         "choice_types": {},
         "holding_types": (),
         "holding_entry_types": {},
@@ -1805,6 +1815,7 @@ LANG_SPEC: dict[str, LangSpec] = {
         "cond_at_index": {},
         "writing_builtins": frozenset(),
         "iterate_types": {},
+        "iterate_binding": {},
         "choice_types": {},
         "holding_types": (),
         "holding_entry_types": {},
@@ -1984,6 +1995,7 @@ LANG_SPEC: dict[str, LangSpec] = {
         # RESULT flows on. Different question, so a different row.
         "writing_builtins": frozenset({"delete", "clear"}),
         "iterate_types": {"range_clause": "right"},
+        "iterate_binding": {"range_clause": "left"},
         "choice_types": {},
         "holding_types": (),
         "holding_entry_types": {},
