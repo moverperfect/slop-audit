@@ -1,5 +1,53 @@
 # Slop Audit Methodology
 
+## About this fork
+
+This is [moverperfect/slop-audit](https://github.com/moverperfect/slop-audit), maintained by
+moverperfect. It is a fork of [openhonest/slop-audit](https://github.com/openhonest/slop-audit) at
+commit `81a4200`. Apart from this section, the README is upstream's, unchanged.
+
+**Why it exists.** The Python reference analyzer (`tools/l1_analyzer`) gave wrong or missing
+readings on a TypeScript web application audited on Windows. Some readings failed to run at all,
+and some measured the wrong thing. This fork fixes those readings. Each fix is one commit, with a
+test that fails without it. The commit messages explain the defect and the change; `git log
+81a4200..` is the detailed record.
+
+**What changed:**
+
+- **Windows.** The suite runner starts `npx`, stops a hung suite, and reads output as UTF-8. git
+  output and `package.json` are read as UTF-8 too. vitest's colour codes no longer reach a
+  reported failure line.
+- **What counts as production code.** Colocated test files (`price.test.ts`, `__tests__/`,
+  `calc_test.go`) are recognised as tests. The headers of the Wrangler and Kontent.ai code
+  generators mark their files as generated.
+- **L1.15 type escapes.** For TypeScript, only `any` counts, outside declaration files, as the canon
+  defines it. `unknown` no longer counts.
+- **L1.10 CI/CD.** GitLab, Jenkins and Azure Pipelines definitions are counted, not just GitHub
+  workflows. Pipeline templates are disclosed but not counted.
+- **L1.18b state classifier, for JavaScript and TypeScript:**
+  - It reads more of the language: `readonly` types, `as`/`satisfies`/`await`, loops, template
+    literals, ternaries, object and array literals, arrow-function bodies and type queries.
+  - It follows a value into this repository's own helpers, one level deep.
+  - It treats package imports, platform globals and `new X(...)` as the boundaries they are.
+  - It reads a key named by a constant as that constant. This applies in every language that can
+    declare a binding that is never reassigned, so not in Python or Ruby.
+- **The carried-value rule** (all languages). A state is no longer cleared as deciding nothing
+  when its element is tested inside a loop, or when a value read from it is tested through a
+  local.
+- **Smaller fixes:** selecting indicators with `--indicators`, report naming, a percentage the
+  scorecard printed for an unmeasured reading, the L1.20 failure line, a `/media` web path
+  reported as a machine path, and a much faster walk past ignored `node_modules`.
+
+**Not brought along.** The Rust port (`tools/slop-audit-rs`) has not been updated to match. Where
+this fork changed the Python reference's rules, the port still reads the old ones. Only its
+generated language tables were regenerated, where a commit changed the table they come from.
+
+**License.** Apache License 2.0, as upstream; see `LICENSE`. In line with section 4(b), files
+changed in this fork are modified from the original Slop Audit files. `git log 81a4200..` lists
+each change and the files it touched.
+
+---
+
 A **slop audit** is an open standard for measuring whether a codebase can be exhaustively verified, not just tested. Code coverage tells you how many lines a test executed. It cannot tell you whether verifying the code's behaviour is even possible. The Slop Audit measures that directly, through finite-testability indicators (mutable-state ratio, decision-space coverage, test determinism) and an eighteen-dimension compliance mapping. It is not a detector of AI-generated text and it is not a slang term.
 
 The methodology is documents, and it is runnable by an assessor from those documents alone. Layer 1 is also a tool: twenty indicators over git history, source and the target's own test run, across nine languages, in a Python reference implementation and a single-file portable binary. [Jump to running it](#run-it-on-a-repo).
