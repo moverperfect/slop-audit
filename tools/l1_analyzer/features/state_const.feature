@@ -19,7 +19,14 @@ Feature: state_const — whether a declaration settles a state at one value
     When _declared_constant looks for a modifier on the declaration and a literal on the right of it
     Then it answers yes only when BOTH hold, because a modifier alone buys binding immutability and not value immutability
     And it reads a modifier that is a grandchild as well as a child, since Java gathers its modifiers into their own node and C# does not
+    And it reads only the declaration that binds the state, reached from the state's own binding site, so a neighbour's constant in the same block cannot settle it
     But a language declaring no modifiers answers no for every state, which is the behaviour it had before the rule existed
+
+  Scenario: own_declaration finds the declaration that binds a name
+    Given the binding site of a state's name
+    When own_declaration climbs at most three ancestors looking for one of the language's declaration node types
+    Then it returns that declaration, which is where the state's own modifiers and initialiser are
+    But it returns nothing when no such declaration is within reach, and the state is then not settled by the constant rule at all
 
   Scenario: literal_initialiser checks that every value a declaration binds is a literal
     Given a declaration node and the language's literal and binding vocabularies

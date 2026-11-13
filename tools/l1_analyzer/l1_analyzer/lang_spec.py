@@ -71,6 +71,10 @@ class LangSpec(TypedDict, total=False):
     # spells `{ S }` as its own node, and a collector that matched identifiers alone never
     # saw that reference, so the shorter spelling hid a use the longer one showed.
     name_reference_types: tuple[str, ...]
+    # The nodes that DECLARE a binding and carry its modifiers: `final` on Java's
+    # field_declaration, `const` on C's declaration. The declared-constant rule reads the one
+    # that binds the state and no other, so a neighbour's `const` cannot settle it.
+    declaration_types: tuple[str, ...]
     local_binding: dict[str, tuple[str, str | None]]
     # A match or switch, as {node type: (subject field, arm type)}. Two readers want it: the
     # state classifier, which has read it since it was written, and clause 1, for which a
@@ -626,6 +630,7 @@ LANG_SPEC: dict[str, LangSpec] = {
         "holding_entry_types": {},
         "expression_body_types": {},
         "name_reference_types": ("identifier",),
+        "declaration_types": (),
         "local_binding": {"assignment": ("left", "right")},
         "switch_types": {"match_statement": ("subject", "case_clause")},
         "immutable_modifiers": frozenset(),
@@ -953,6 +958,8 @@ LANG_SPEC: dict[str, LangSpec] = {
         # `{ S }` reads S exactly as `{ S: S }` does. The destructuring `const { S } = o` is a
         # different node, `shorthand_property_identifier_pattern`, and binds a new name.
         "name_reference_types": ("identifier", "shorthand_property_identifier"),
+        # `const` sits on the lexical_declaration around the declarator, `readonly` on a field.
+        "declaration_types": ("lexical_declaration", "variable_declaration", "field_definition"),
         "local_binding": {"variable_declarator": ("name", "value")},
         "switch_types": {"switch_statement": ("value", "switch_case")},
         "immutable_modifiers": frozenset({"const"}),
@@ -1124,6 +1131,7 @@ LANG_SPEC: dict[str, LangSpec] = {
         "holding_entry_types": {},
         "expression_body_types": {},
         "name_reference_types": ("identifier",),
+        "declaration_types": ("field_declaration", "local_variable_declaration", "constant_declaration"),
         "local_binding": {"variable_declarator": ("name", "value")},
         "switch_types": {"switch_expression": ("condition", "switch_block_statement_group")},
         "immutable_modifiers": frozenset({"final"}),
@@ -1280,6 +1288,7 @@ LANG_SPEC: dict[str, LangSpec] = {
         "holding_entry_types": {},
         "expression_body_types": {},
         "name_reference_types": ("identifier",),
+        "declaration_types": ("field_declaration", "local_declaration_statement", "property_declaration"),
         "local_binding": {"variable_declarator": ("name", None)},
         "switch_types": {"switch_statement": ("value", "switch_section")},
         "immutable_modifiers": frozenset({"const", "readonly"}),
@@ -1451,6 +1460,7 @@ LANG_SPEC: dict[str, LangSpec] = {
         "holding_entry_types": {},
         "expression_body_types": {},
         "name_reference_types": ("identifier",),
+        "declaration_types": ("const_item", "static_item", "let_declaration"),
         "local_binding": {"let_declaration": ("pattern", "value")},
         "switch_types": {"match_expression": ("value", "match_arm")},
         "immutable_modifiers": frozenset({"const", "static"}),
@@ -1627,6 +1637,7 @@ LANG_SPEC: dict[str, LangSpec] = {
         "holding_entry_types": {},
         "expression_body_types": {},
         "name_reference_types": ("identifier",),
+        "declaration_types": (),
         "local_binding": {"assignment": ("left", "right")},
         "switch_types": {"case": ("value", "when")},
         "immutable_modifiers": frozenset(),
@@ -1789,6 +1800,7 @@ LANG_SPEC: dict[str, LangSpec] = {
         "holding_entry_types": {},
         "expression_body_types": {},
         "name_reference_types": ("identifier",),
+        "declaration_types": ("declaration",),
         "local_binding": {"init_declarator": ("declarator", "value")},
         "switch_types": {"switch_statement": ("condition", "case_statement")},
         "immutable_modifiers": frozenset({"const"}),
@@ -1966,6 +1978,7 @@ LANG_SPEC: dict[str, LangSpec] = {
         "holding_entry_types": {},
         "expression_body_types": {},
         "name_reference_types": ("identifier",),
+        "declaration_types": ("const_declaration", "var_declaration"),
         "local_binding": {"short_var_declaration": ("left", "right")},
         "switch_types": {"expression_switch_statement": ("value", "expression_case")},
         "immutable_modifiers": frozenset({"const"}),
@@ -2122,13 +2135,16 @@ _TYPESCRIPT["scalar_types"] = frozenset({"number", "string", "boolean", "bigint"
 # program runs, so the value is never read there: C#'s `typeof(T)` row, spelled in a type.
 # The runtime `typeof x === "string"` is a unary_expression over a value and is not this node.
 _TYPESCRIPT["unread_operand_types"] = ("type_query",)
+# A class field is `public_field_definition` here and carries `readonly` itself.
+_TYPESCRIPT["declaration_types"] = ("lexical_declaration", "variable_declaration", "public_field_definition")
 
 # The overridden keys, named once so a test can assert that nothing ELSE diverged. Written
 # out per key above rather than merged from a dict of object, so each value is checked
 # against the field it lands in instead of being waved past the checker with an ignore.
 TYPESCRIPT_OVERRIDES = frozenset({
     "binding_sites", "default_param_name", "default_param_types", "field_decl_types",
-    "absent_markers", "declared_bound_types", "immutable_modifiers", "passthrough_types",
+    "absent_markers", "declaration_types", "declared_bound_types", "immutable_modifiers",
+    "passthrough_types",
     "return_type_field", "scalar_types",
     "typed_param_types", "unread_operand_types",
     "value_wrapper_types",

@@ -22,6 +22,7 @@ from l1_analyzer.lang_spec import _PY_MUTATING, LangSpec
 from l1_analyzer.state_partition import NEUTRAL
 from l1_analyzer.ts_nodes import field as _field
 from l1_analyzer.ts_nodes import first_named as _first_named
+from l1_analyzer.ts_nodes import is_binding_site as _is_binding_site
 from l1_analyzer.ts_nodes import is_write_target as _is_write_target
 from l1_analyzer.ts_nodes import refs as _refs
 from l1_analyzer.ts_nodes import same as _same
@@ -127,22 +128,44 @@ def declared_constant(refs: list[Node], sp: LangSpec) -> bool:
     if not mods:
         return False
     for ref in refs:
-        # `climbing`, not `node`: the loop rebinds it to the parent, which is a different
-        # thing from the reference it started at and may be nothing at all.
-        climbing: Node | None = ref
-        for _ in range(4):
-            climbing = climbing.parent if climbing is not None else None
-            if climbing is None:
-                break
-            # One level deeper as well: Java gathers `private static final` into a
-            # `modifiers` node, so the keyword is a grandchild, while C# hangs `const` and
-            # `readonly` directly off the declaration.
-            declared = any(c.type in mods or _text(c) in mods
-                           or any(g.type in mods or _text(g) in mods for g in c.children)
-                           for c in climbing.children)
-            if declared and literal_initialiser(climbing, sp):
-                return True
+        # FROM THE STATE'S OWN BINDING, and only to the declaration that binds it. This
+        # climbed four ancestors from every reference and asked of whatever it reached
+        # whether any child carried the modifier and every declaration below was a literal,
+        # so a reference in a block that also held an unrelated `final int n = 1` settled a
+        # mutable state as a constant. Every family the rule serves did it: Java, C#, C,
+        # Rust and TypeScript.
+        if ref.parent is None or not _is_binding_site(ref, ref.parent, sp):
+            continue
+        declaration = own_declaration(ref, sp)
+        if declaration is None:
+            continue
+        # One level deeper as well: Java gathers `private static final` into a `modifiers`
+        # node, so the keyword is a grandchild, while C# hangs `const` and `readonly`
+        # directly off the declaration. The declaration is the state's own, so its
+        # grandchildren are its own modifiers rather than a neighbour's.
+        declared = any(c.type in mods or _text(c) in mods
+                       or any(g.type in mods or _text(g) in mods for g in c.children)
+                       for c in declaration.children)
+        if declared and literal_initialiser(declaration, sp):
+            return True
     return False
+
+
+def own_declaration(binding: Node, sp: LangSpec) -> Node | None:
+    """The declaration that binds this name, by the language's `declaration_types`, or None.
+
+    Three levels at most, which is as deep as any grammar here puts a declarator under its
+    declaration: C# nests variable_declarator, variable_declaration, field_declaration. A
+    name with no such declaration within reach is not settled by this rule at all, which is
+    the direction that leaves its references to be read."""
+    node = binding.parent
+    for _ in range(3):
+        if node is None:
+            return None
+        if node.type in sp["declaration_types"]:
+            return node
+        node = node.parent
+    return None
 
 
 def literal_initialiser(declaration: Node, sp: LangSpec) -> bool:
