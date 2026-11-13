@@ -22,8 +22,12 @@ test that fails without it. The commit messages explain the defect and the chang
   generators mark their files as generated.
 - **L1.15 type escapes.** For TypeScript, only `any` counts, outside declaration files, as the canon
   defines it. `unknown` no longer counts.
-- **L1.10 CI/CD.** GitLab, Jenkins and Azure Pipelines definitions are counted, not just GitHub
-  workflows. Pipeline templates are disclosed but not counted.
+- **L1.10 CI/CD.** A deliberate methodology change: L1.10 counts which of six gates the pipelines
+  run, not how many files they are spread over. The gates are build, test, static checks, security
+  scan, deploy, and post-deploy verification. Healthy is 5 or 6, Not Healthy 1–4, Slop 0. Each
+  step counts for the command it runs, never its name, so an echo-only pipeline counts for
+  nothing. GitHub, GitLab, Jenkins and Azure Pipelines are read, including the Azure templates a
+  pipeline includes. See `research/amendments/amendment-2026-11-13-l1-10-gate-categories.md`.
 - **L1.11 containerization.** It reads n/a for an app deployed with Wrangler to Cloudflare Workers
   or Pages: a root `wrangler.toml`, `wrangler.json` or `wrangler.jsonc` with no Dockerfile or
   docker-compose.yml. That platform runs no container, so the row drops out of the hygiene score
