@@ -78,13 +78,15 @@ class Project(TypedDict):
     and the directories it maps to; the aliases are the project's own code, so an import
     through one is never a package's. `trees` and `reaches` are this run's caches: a file is
     parsed once however many calls reach it, and a helper's parameter is read once per (file,
-    function, parameter, cell bound)."""
+    function, parameter, cell bound). `package_types` caches, per directory, the `"type"` of
+    the nearest `package.json` at or above it."""
     root: Path
     lang: str
     packages: frozenset[str]
     aliases: list[tuple[str, list[Path]]]
     trees: dict[Path, Node | None]
     reaches: dict[tuple[str, int, int, int | None], Followed]
+    package_types: dict[Path, str]
 
 
 class CallContext(TypedDict):
@@ -111,7 +113,7 @@ def project(repo: Path, lang: str, sp: LangSpec) -> Project | None:
         return None
     root = repo.resolve()
     return {"root": root, "lang": lang, "packages": packages_in(text_or_empty(repo / "package.json")),
-            "aliases": _aliases(root), "trees": {}, "reaches": {}}
+            "aliases": _aliases(root), "trees": {}, "reaches": {}, "package_types": {}}
 
 
 def packages_in(manifest: str) -> frozenset[str]:
@@ -126,6 +128,35 @@ def packages_in(manifest: str) -> frozenset[str]:
         return frozenset()
     return frozenset(name for table in _DEPENDENCY_TABLES
                      if isinstance(data.get(table), dict) for name in data[table])
+
+
+def module_type_in(manifest: str) -> str:
+    """A `package.json`'s `"type"`: "module", "commonjs", or "" when it says neither. A
+    manifest that does not parse says neither, which leaves the import/export rule to decide."""
+    try:
+        data = json.loads(manifest) if manifest else {}
+    # honest-code-allow: L1.21.8 - a manifest that does not parse sets no module type, so the file's own import/export decides as it did before the manifest was read
+    except json.JSONDecodeError:
+        return ""
+    kind = data.get("type") if isinstance(data, dict) else None
+    return kind if kind in ("module", "commonjs") else ""
+
+
+def package_type(project_: Project, directory: Path) -> str:
+    """The `"type"` of the nearest `package.json` at or above a directory, looking no higher
+    than the repository root: Node's own lookup, which stops at the first manifest it finds
+    whether or not that one sets a type. Cached per directory for the run."""
+    cache = project_["package_types"]
+    if directory not in cache:
+        manifest = text_or_empty(directory / "package.json")
+        root = project_["root"]
+        if manifest:
+            cache[directory] = module_type_in(manifest)
+        elif directory == root or root not in directory.parents:
+            cache[directory] = ""
+        else:
+            cache[directory] = package_type(project_, directory.parent)
+    return cache[directory]
 
 
 def _aliases(root: Path) -> list[tuple[str, list[Path]]]:
@@ -207,27 +238,30 @@ def context(project_: Project, path: Path, root: Node, sp: LangSpec, follow: boo
     is an ES module and which names it binds."""
     return {"project": project_, "path": path.resolve(), "imports": imports_in(root),
             "functions": functions_in(root, sp), "follow": follow,
-            "module": is_es_module(root, path.suffix), "bound": bound_names(root)}
+            "module": is_es_module(root, path.suffix, package_type(project_, path.resolve().parent)),
+            "bound": bound_names(root)}
 
 
-# The suffixes that settle what a file is whatever it holds.
+# The suffixes that settle what a file is whatever it holds, and the two a package.json's
+# `"type"` governs.
 _MODULE_SUFFIXES = (".mjs", ".mts")
 _COMMONJS_SUFFIXES = (".cjs", ".cts")
+_TYPED_SUFFIXES = (".js", ".ts")
 
 
-def is_es_module(root: Node, suffix: str) -> bool:
+def is_es_module(root: Node, suffix: str, package_type_: str) -> bool:
     """Whether a file is an ES module: always for `.mjs` and `.mts`, never for `.cjs` and
-    `.cts`, and otherwise when it has a top-level `import` or `export`, which is TypeScript's
-    own `moduleDetection: auto` rule. A file with neither is a script, sharing one global scope
-    with every other script, so a name it does not declare may be declared by another of them.
-
-    `package.json`'s `"type": "module"` is not consulted. A `.js` file under it with no import
-    or export is an ES module to Node, and here it reads as a script, which leaves its globals
-    ours: the direction that moves nothing to the adopter."""
+    `.cts`; for `.js` and `.ts`, when the nearest package.json says `"type": "module"`, which
+    is Node's own rule; and otherwise when it has a top-level `import` or `export`, which is
+    TypeScript's `moduleDetection: auto` rule. A file that is none of these is a script,
+    sharing one global scope with every other script, so a name it does not declare may be
+    declared by another of them. `"type": "commonjs"`, or no type, leaves the last rule."""
     if suffix in _MODULE_SUFFIXES:
         return True
     if suffix in _COMMONJS_SUFFIXES:
         return False
+    if suffix in _TYPED_SUFFIXES and package_type_ == "module":
+        return True
     return any(c.type in ("import_statement", "export_statement") for c in root.children)
 
 

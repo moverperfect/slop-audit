@@ -153,10 +153,22 @@ Feature: state_callees — where a plain-name callee lives, for the state reader
     But it says nothing about whether that package is declared, which is is_external's question
 
   Scenario: is_es_module decides whether a file's undeclared names can only be the platform's
-    Given a file's parse tree and its suffix
-    When is_es_module reads the suffix, then the file's top-level statements
-    Then a .mjs or .mts file is a module, a .cjs or .cts file is not, and any other file is one when it imports or exports at its top level
-    But a file with neither is a script sharing one global scope with the project's other scripts, so a name it does not declare may still be the project's
+    Given a file's parse tree, its suffix and the type its nearest package.json declares
+    When is_es_module reads the suffix, then the package type, then the file's top-level statements
+    Then a .mjs or .mts file is a module, a .cjs or .cts file is not, a .js or .ts file is one under "type": "module", and any file is one when it imports or exports at its top level
+    But a file that is none of these is a script sharing one global scope with the project's other scripts, so a name it does not declare may still be the project's
+
+  Scenario: module_type_in reads the module type a package.json declares
+    Given the text of a package.json
+    When module_type_in parses it and reads its "type"
+    Then it returns "module" or "commonjs" as declared
+    But any other value, no type, or a manifest that does not parse declares neither, and leaves the file's own imports and exports to decide
+
+  Scenario: package_type finds the module type of the nearest package.json above a directory
+    Given the run's project and a directory inside it
+    When package_type reads the directory's package.json, or climbs to its parent's when there is none
+    Then the first manifest found decides, even when it declares no type, which is Node's own lookup
+    But it climbs no higher than the repository root, and caches each directory's answer for the run
 
   Scenario: bound_names lists every name a file binds, anywhere in it
     Given a file's parse tree

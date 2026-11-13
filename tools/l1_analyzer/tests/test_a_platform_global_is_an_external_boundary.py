@@ -7,10 +7,12 @@ platform provides: the browser's `getComputedStyle`, the Workers runtime's `fetc
 honest reason is the adopter's boundary, where an explicit contract would make it decidable.
 
 WHAT AN ES MODULE IS, here. A `.mjs` or `.mts` file always is; a `.cjs` or `.cts` file never is;
-any other file is one when it has a top-level `import` or `export`, which is TypeScript's own
-`moduleDetection: auto` rule. A file with neither is a SCRIPT, and scripts share one global
-scope: a name it does not declare may be declared by another script in the project, so it stays
-ours, and so does every name in a CommonJS file.
+a `.js` or `.ts` file is one when the nearest package.json says `"type": "module"` (see
+test_a_type_module_package_makes_a_file_an_es_module.py); and any file is one when it has a
+top-level `import` or `export`, which is TypeScript's own `moduleDetection: auto` rule. These
+cases write a package.json with no type. A file that is none of these is a SCRIPT, and scripts
+share one global scope: a name it does not declare may be declared by another script in the
+project, so it stays ours, and so does every name in a CommonJS file.
 
 "Declared in the file" is read generously: any binding of the name anywhere in the file, a
 parameter of some other function or a destructured local included, keeps it ours. Erring that
