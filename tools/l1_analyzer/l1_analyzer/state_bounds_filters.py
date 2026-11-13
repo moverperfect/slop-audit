@@ -64,6 +64,7 @@ from collections.abc import Callable
 from tree_sitter import Node
 
 from l1_analyzer import state_ref_reads as reads
+from l1_analyzer import state_tested
 from l1_analyzer.lang_spec import (
     COMPARISON_OPS,
     LangSpec,
@@ -118,51 +119,14 @@ def _drives_no_decision(refs: list[Node], sp: LangSpec) -> bool:
     once, in the loop header. The body's `if (pattern.test(x))` tests every element, and which
     branch runs depends on what the table holds. Reading only the state's own references, this
     rule cleared three such tables on an Astro site. Every language with a loop row is read
-    the same way: Go's `range`, Rust's `for`, JavaScript's `for...of` and `for...in`."""
-    return not any(reads.in_test(r, sp) or _element_tested(r, sp) for r in refs)
+    the same way: Go's `range`, Rust's `for`, JavaScript's `for...of` and `for...in`.
 
-
-def _element_tested(ref: Node, sp: LangSpec) -> bool:
-    """Whether a loop walks this reference and its body puts the element it binds in a test
-    expression. A value derived from the element counts where it is written inside the test,
-    `if (pattern.test(x))`, which is how `in_test` already reads the state's own references."""
-    loop = _walking_loop(ref, sp)
-    if loop is None:
-        return False
-    node, binding_field = loop
-    binding = _field(node, binding_field)
-    names = {_text(n) for n in descendants(binding, "named")
-             if "identifier" in n.type and not n.type.startswith("property")} if binding is not None else set()
-    # Go hangs the range clause inside the for statement, which is the node with the body.
-    scope = node if _field(node, "body") is not None else node.parent
-    body = _field(scope, "body") if scope is not None else None
-    return bool(names) and body is not None and any(
-        n.type in sp["name_reference_types"] and _text(n) in names and reads.in_test(n, sp)
-        for n in descendants(body, "named"))
-
-
-def _walking_loop(ref: Node, sp: LangSpec) -> tuple[Node, str] | None:
-    """The loop that walks this reference, with the field that binds its element: walked
-    directly, through a wrapper such as `&`, or through a method chain taken off it, as
-    `self.items.iter()` is. None when no loop walks it, or the loop names no binding."""
-    cur = ref
-    while cur.parent is not None:
-        parent = cur.parent
-        walked = sp["iterate_types"].get(parent.type)
-        if walked is not None:
-            holder = _field(parent, walked)
-            if holder is None or not (_same(holder, cur) or _same(_unwrap_unary(holder, sp), cur)):
-                return None
-            binding = sp["iterate_binding"].get(parent.type)
-            return (parent, binding) if binding else None
-        chained = ((parent.type in sp["member_types"] and _same(_field(parent, sp["mem_object"]), cur))
-                   or (not sp["flat_call"] and parent.type in sp["call_types"]
-                       and _same(_field(parent, sp["call_fn"]), cur))
-                   or parent.type in sp["value_wrapper_types"])
-        if not chained:
-            return None
-        cur = parent
-    return None
+    A LOCAL BOUND FROM A READ OF THE STATE AND TESTED is a test of the state, since 2026-11-13,
+    for the same reason. `let v = await env.KV.get(k); if (!v)` tests `v`, and `v` holds what
+    the state holds at `k`. Every language's binding row is read: a declarator, an assignment
+    and Go's short declaration. Both steps are read in state_tested."""
+    return not any(reads.in_test(r, sp) or state_tested.element_tested(r, sp)
+                   or state_tested.derived_local_tested(r, sp) for r in refs)
 
 
 # --- Rule: write-once, receiver-aware --------------------------------------------
