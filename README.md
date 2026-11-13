@@ -24,6 +24,10 @@ test that fails without it. The commit messages explain the defect and the chang
   defines it. `unknown` no longer counts.
 - **L1.10 CI/CD.** GitLab, Jenkins and Azure Pipelines definitions are counted, not just GitHub
   workflows. Pipeline templates are disclosed but not counted.
+- **L1.11 containerization.** It reads n/a for an app deployed with Wrangler to Cloudflare Workers
+  or Pages: a root `wrangler.toml`, `wrangler.json` or `wrangler.jsonc` with no Dockerfile or
+  docker-compose.yml. That platform runs no container, so the row drops out of the hygiene score
+  instead of grading Slop.
 - **L1.18b state classifier, for JavaScript and TypeScript:**
   - It reads more of the language: `readonly` types, `as`/`satisfies`/`await`, loops, template
     literals, ternaries, object and array literals, arrow-function bodies and type queries.
