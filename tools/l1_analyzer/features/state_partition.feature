@@ -118,7 +118,20 @@ Feature: state_partition — what a finite verdict carries beside the word "fini
     When silence_kind looks at where the callee name comes from
     Then a bare name is the analyzer's own gap, and a name reached through another object is the adopter's boundary
     And a method reached through the receiver of the class under analysis counts as ours, by the spec's scoping rule
+    And a constructor call is read through the field that holds what it constructs, so `new Foo(x)` is a name and not a computed target
     But a callee that is not a name at all is chosen while the program runs, which nobody can enumerate by reading
+
+  Scenario: callee_node finds what a call names as the thing that runs
+    Given a call or a constructor call
+    When callee_node reads the call's function field, or the field the language names for what a constructor call constructs
+    Then it returns that node, with any generic arguments peeled off so List<int> names List
+    But a flat-call grammar's method call names its callee in fields of the call itself, and gives nothing here
+
+  Scenario: _constructor_silence decides whose problem a value handed to a constructor is
+    Given what a constructor call constructs
+    When _constructor_silence reads it the way a callee is read
+    Then a plain name is ours, and a name reached through another is the adopter's boundary unless it is reached through the class's own receiver
+    But anything computed is still dynamic dispatch, and nothing at all is too
 
   Scenario: _reach builds one of the three reaches that carry no detail beyond their kind
     Given a kind and whether that kind has an order to reach

@@ -389,6 +389,8 @@ def silence_kind(call: Node | None, sp: LangSpec) -> Reach:
     all is computed, so nobody can enumerate it by reading."""
     if call is None:
         return undecided(DYNAMIC_DISPATCH)
+    if call.type in sp["construct_types"]:
+        return _constructor_silence(callee_node(call, sp), sp)
     if sp["flat_call"]:
         receiver = _field(call, sp["call_recv"])
         return undecided(EXTERNAL_BOUNDARY if receiver is not None else UNMODELED_CALLEE)
@@ -400,5 +402,41 @@ def silence_kind(call: Node | None, sp: LangSpec) -> Reach:
         ours = obj is not None and _text(obj) in sp["this_idents"]
         return undecided(UNMODELED_CALLEE if ours else EXTERNAL_BOUNDARY)
     if fn.type == "identifier":
+        return undecided(UNMODELED_CALLEE)
+    return undecided(DYNAMIC_DISPATCH)
+
+
+def callee_node(call: Node, sp: LangSpec) -> Node | None:
+    """What a call names as the thing that runs: a call's function, or what a constructor call
+    constructs, with any generic arguments peeled off (`List<int>` names `List`). None for a
+    flat-call grammar's method call, whose name and receiver are fields of the call itself."""
+    constructed = sp["construct_types"].get(call.type)
+    if constructed is None:
+        return None if sp["flat_call"] else _field(call, sp["call_fn"])
+    node = _field(call, constructed)
+    while node is not None and "generic" in node.type and node.named_children:
+        node = node.named_children[0]
+    return node
+
+
+def _constructor_silence(constructed: Node | None, sp: LangSpec) -> Reach:
+    """The silence for a value handed to a constructor, read the way a callee is.
+
+    A constructor call keeps what it constructs in its own field, `constructor` in
+    JavaScript's new_expression and `type` in C#'s and Java's object_creation_expression, and
+    the callee rule found no function there and called the target computed. `new Response(x)`
+    is not computed. A plain name is a type the reader could model, which is ours; a name
+    reached through another, `ns.Foo`, `System.Text.StringBuilder`, `java.util.ArrayList`, is
+    the adopter's boundary, unless it is reached through the receiver of the class under
+    analysis; anything else, `new (pick())(x)`, is computed and stays dynamic dispatch."""
+    if constructed is None:
+        return undecided(DYNAMIC_DISPATCH)
+    qualified = constructed.type in sp["member_types"] or any(
+        word in constructed.type for word in ("qualified", "scoped"))
+    if qualified:
+        obj = _field(constructed, sp["mem_object"]) if constructed.type in sp["member_types"] else None
+        ours = obj is not None and _text(obj) in sp["this_idents"]
+        return undecided(UNMODELED_CALLEE if ours else EXTERNAL_BOUNDARY)
+    if constructed.type.endswith("identifier"):
         return undecided(UNMODELED_CALLEE)
     return undecided(DYNAMIC_DISPATCH)

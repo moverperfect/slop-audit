@@ -38,7 +38,7 @@ from tree_sitter import Node
 
 from l1_analyzer.boundary import boundary, text_or_empty
 from l1_analyzer.lang_spec import LangSpec
-from l1_analyzer.state_partition import Reach
+from l1_analyzer.state_partition import Reach, callee_node
 from l1_analyzer.ts_nodes import field as _field
 from l1_analyzer.ts_nodes import text as _text
 
@@ -301,8 +301,9 @@ def imported_from_a_package(call: Node | None, calls: CallContext, sp: LangSpec)
 
 
 def _plain_callee(call: Node | None, sp: LangSpec) -> str:
-    """The callee's name when it is a plain identifier, and nothing otherwise."""
-    fn = _field(call, sp["call_fn"]) if call is not None and not sp["flat_call"] else None
+    """The callee's name when it is a plain identifier, and nothing otherwise. A constructor
+    call's is what it constructs: `new Response(x)` names `Response`."""
+    fn = callee_node(call, sp) if call is not None else None
     return _text(fn) if fn is not None and fn.type == "identifier" else ""
 
 
