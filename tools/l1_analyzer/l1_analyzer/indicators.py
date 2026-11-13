@@ -108,12 +108,11 @@ def band(value: float, healthy: float, slop: float, *, higher_is_better: bool) -
 
 
 def compute_config_indicators(repo: Path) -> Panel:
-    from l1_analyzer import ci_pipelines
+    from l1_analyzer import ci_pipelines, containerization
 
     has_precommit = (repo / ".pre-commit-config.yaml").exists() or (repo / ".husky").exists()
     pipelines = ci_pipelines.find(repo)
     ci_count = ci_pipelines.count(pipelines)
-    has_docker = (repo / "Dockerfile").exists() or (repo / "docker-compose.yml").exists()
 
     # Each carries a details line naming what was looked for and where. These three shipped
     # a band and a value with no sentence, so a reader got Slop for the pre-commit indicator
@@ -131,13 +130,7 @@ def compute_config_indicators(repo: Path) -> Panel:
             "band": band(ci_count, 5, 1, higher_is_better=True),
             "details": ci_pipelines.details(pipelines),
         },
-        "L1.11": {
-            "value": "present and parameterized" if has_docker else "absent",
-            "band": "Healthy" if has_docker else "Slop",
-            "details": ("a Dockerfile or docker-compose.yml is present at the repository root"
-                        if has_docker else
-                        "no Dockerfile and no docker-compose.yml at the repository root"),
-        },
+        "L1.11": containerization.reading(containerization.find(repo)),
     }
 from l1_analyzer.lang_cfg import (  # noqa: F401 - re-exported: every reader imports these from here
     LANG_CFG,

@@ -33,8 +33,8 @@ Feature: indicators — the Layer-1 indicator computations, L1.1 through L1.20
 
   Scenario: compute_config_indicators checks the repository root for three pieces of tooling
     Given the repository root
-    When compute_config_indicators looks for a pre-commit configuration, counts the workflow files and looks for a container file
-    Then it returns the three results L1.9, L1.10 and L1.11 from presence alone
+    When compute_config_indicators looks for a pre-commit configuration, counts the workflow files and asks containerization what the root holds
+    Then it returns the three results L1.9, L1.10 and L1.11 from presence alone, L1.11 reading n/a where a Wrangler config names a target that runs no container
     And it looks only at the root and only at those exact names, so the same tooling kept anywhere else reads as absent
     But L1.11 publishes the words "present and parameterized" on nothing more than a file existing, because parameterisation is never examined
 
