@@ -39,14 +39,14 @@ def _l110(root: Path):
 
 def test_an_azure_pipeline_is_counted_and_the_templates_it_includes_are_not(tmp_path):
     repo = _write(tmp_path, {
-        "pipelines/azure-pipelines.deployment.yml": (
+        "pipelines/azure-pipelines.ci.yml": (
             "trigger:\n  - main\nstages:\n  - stage: Build\n    jobs:\n"
-            "      - template: templates/build-job.yml\n"),
-        "pipelines/azure-pipelines.tagging.yml": (
+            "      - template: templates/compile.yml\n"),
+        "pipelines/azure-pipelines.release.yml": (
             "trigger: none\njobs:\n  - job: Tag\n    steps:\n"
-            "      - template: /pipelines/templates/tagging.yml\n"),
-        "pipelines/templates/build-job.yml": "parameters:\n  - name: env\njobs:\n  - job: Build\n",
-        "pipelines/templates/tagging.yml": "steps:\n  - script: echo tag\n",
+            "      - template: /pipelines/templates/publish.yml\n"),
+        "pipelines/templates/compile.yml": "parameters:\n  - name: env\njobs:\n  - job: Build\n",
+        "pipelines/templates/publish.yml": "steps:\n  - script: echo tag\n",
     })
     row = _l110(repo)
     # Both definitions are read and both templates followed. Neither runs a gate: one template
