@@ -302,6 +302,7 @@ Feature: state_bounds_filters — attribute-level false-positive filters for the
     When is_false_positive runs the two guards and then the rules the verdict allows
     Then it is true only when a shape is provably testable, and any doubt at all leaves the finding standing
     And a value inspected in a branch, or a presence test that is itself the answer, ends it before any rule runs
+    And the carried-value rule does not clear a state the caller reports as tested elsewhere, in a helper it is handed to, because a test the state's own references do not show is still a test
     But an unresolved verdict admits only the write-once rule, because a fail-closed finding is not about decision space and the carried-value rule must never clear it
 
   Scenario: _stores_into asks whether anything writes into this container at all

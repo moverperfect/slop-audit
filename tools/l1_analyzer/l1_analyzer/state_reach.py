@@ -40,6 +40,7 @@ from l1_analyzer.state_partition import (
     Partition,
     Reach,
 )
+from l1_analyzer.state_ref_reads import in_test
 from l1_analyzer.ts_nodes import bare_condition as _bare_condition
 from l1_analyzer.ts_nodes import field as _field
 from l1_analyzer.ts_nodes import first_arg as _first_arg
@@ -734,7 +735,110 @@ def _argument_reach(value: Node, call: Node | None, sp: LangSpec, closed_sets: d
         return state_partition.output()
     if calls is not None and state_callees.imported_from_a_package(call, calls, sp):
         return state_partition.undecided(state_partition.EXTERNAL_BOUNDARY)
+    followed = _into_the_helper(value, call, sp, closed_sets, cells, depth, calls)
+    if followed is not None:
+        return followed
     return state_partition.silence_kind(call, sp)
+
+
+def _into_the_helper(value: Node, call: Node | None, sp: LangSpec, closed_sets: dict[str, int | None],
+                     cells: int | None, depth: int, calls: CallContext | None) -> Reach | None:
+    """The reach of a value handed to one of this repository's own functions, read inside
+    that function's body, or None to keep the silence.
+
+    ONE LEVEL. The helper's own calls are read with following switched off, so a value it
+    hands on to a second plain name stops there with the silence it always had. Only a value
+    passed as itself is followed: a literal or a spread passed as the argument would be held
+    by the helper under a name of its own, the mutable alias `_held` refuses to follow.
+
+    What the helper does with the parameter is what the call does with the state. A value
+    that comes back out of it, returned or stored, makes the call's own value carry the state
+    on, so the reading continues from the call, as it does through a bounded builtin. Read once
+    per (file, function, parameter, cell bound) in a run, whichever state reached it."""
+    parameter = _helper_parameter(value, call, sp, calls)
+    if calls is None or parameter is None:
+        return None
+    fn, uses, inside, index = parameter
+    key = (str(inside["path"]), fn.start_byte, index, cells)
+    cache = calls["project"]["reaches"]
+    if key not in cache:
+        cache[key] = _parameter_reach(uses, sp, cells, inside)
+    followed = cache[key]
+    if followed["comes_back"] and followed["reach"]["kind"] in (state_partition.OUTPUT, state_partition.WRITE):
+        return _flow(call, sp, closed_sets, cells, depth, calls)
+    return followed["reach"]
+
+
+def _helper_parameter(value: Node, call: Node | None, sp: LangSpec,
+                      calls: CallContext | None) -> tuple[Node, list[Node], CallContext, int] | None:
+    """The helper a value is passed to as itself, and that parameter's references inside it:
+    (function, references, the helper's own call context, argument position). None when
+    the call is not one this reader follows, which keeps the silence it had."""
+    if (calls is None or not calls["follow"] or call is None
+            or value.type in sp["holding_types"] or value.type in sp["passthrough_types"]):
+        return None
+    target = state_callees.callee_function(call, calls, sp)
+    args = _field(call, sp["call_args"])
+    if target is None or args is None:
+        return None
+    fn, inside = target
+    index = next((i for i, a in enumerate(c for c in args.named_children if c.type != "comment")
+                  if _same(a, value)), None)
+    param = state_callees.parameter(fn, index, sp) if index is not None else None
+    body = _field(fn, "body")
+    if index is None or param is None or body is None:
+        return None
+    name = _text(param)
+    uses = [n for n in _refs(body, lambda n: n.type in sp["name_reference_types"] and _text(n) == name)
+            if _same(_binding_function(n, name, sp), fn)]
+    return fn, uses, inside, index
+
+
+def tested_in_a_helper(refs: list[Node], sp: LangSpec, calls: CallContext | None) -> bool:
+    """Whether a reference hands the state to one of this repository's helpers that puts it
+    in a test expression. The state's own references never show that test, so the
+    carried-value rule, which clears a state none of whose references sits in a test, would
+    clear a state the helper branches on."""
+    for ref in refs:
+        if ref.parent is None or ref.parent.type not in sp["arglist_types"]:
+            continue
+        followed = _helper_parameter(ref, ref.parent.parent, sp, calls)
+        if followed is not None and any(in_test(u, sp) for u in followed[1]):
+            return True
+    return False
+
+
+def _parameter_reach(uses: list[Node], sp: LangSpec, cells: int | None,
+                     inside: CallContext) -> state_callees.Followed:
+    """What a helper's body does with one parameter, by the same rows a state's own
+    references get, combined the way `_follow_local` combines a local's uses: an undecided
+    use is the answer, then an unbounded one, then the widest finite one. A body that only
+    hands the value on or writes through it says which, so the caller can follow the call."""
+    reaches = [_categorize(u, sp, {}, cells, _REACH_DEPTH, inside) for u in uses]
+    kinds = [r["kind"] for r in reaches]
+    comes_back = state_partition.OUTPUT in kinds
+    if state_partition.UNDECIDED in kinds:
+        return {"reach": next(r for r in reaches if r["kind"] == state_partition.UNDECIDED), "comes_back": False}
+    if state_partition.UNBOUNDED in kinds:
+        return {"reach": state_partition.unbounded(), "comes_back": False}
+    finite = [r for r in reaches if r["kind"] == state_partition.FINITE]
+    if finite:
+        return {"reach": max(finite, key=lambda r: r["classes"]), "comes_back": False}
+    if state_partition.WRITE in kinds:
+        return {"reach": state_partition.write(), "comes_back": comes_back}
+    return {"reach": state_partition.output(), "comes_back": comes_back}
+
+
+def _binding_function(ref: Node, name: str, sp: LangSpec) -> Node | None:
+    """The nearest enclosing function that takes a parameter of this name: the one a
+    reference to the name means. A nested function with a parameter of its own name shadows
+    the helper's, and its references are not the state's."""
+    scope = ref.parent
+    while scope is not None:
+        if scope.type in sp["func_types"] and state_callees.binds(scope, name, sp):
+            return scope
+        scope = scope.parent
+    return None
 
 
 def _held(literal: Node, sp: LangSpec, closed_sets: dict[str, int | None], cells: int | None,

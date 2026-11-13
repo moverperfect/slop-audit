@@ -17,7 +17,7 @@ Feature: state_callees — where a plain-name callee lives, for the state reader
   Scenario: project reads what one run needs to know about the repository
     Given a repository and a language
     When project reads the repository's package.json and tsconfig.json
-    Then it returns the packages the manifest declares and the project's own import aliases
+    Then it returns the packages the manifest declares, the project's own import aliases, and empty caches for the files and parameters this run will read
     But for a language whose module system this module does not read it returns nothing, and every callee keeps the silence it had
 
   Scenario: packages_in lists every package a manifest declares
@@ -45,10 +45,88 @@ Feature: state_callees — where a plain-name callee lives, for the state reader
     But every other comma is left where it is
 
   Scenario: context makes one file's calls readable
-    Given the run's project and one file's parse tree
-    When context reads the file's imports
+    Given the run's project, one file's path and parse tree, and whether its helpers may be followed
+    When context reads the file's imports and its top-level functions
     Then it returns them beside the project, for the argument rows to consult
-    But it reads nothing outside the file it is given
+    But it reads nothing outside the file it is given, and inside a helper already being read following is switched off
+
+  Scenario: functions_in lists the functions a module declares at its top level
+    Given a module's parse tree
+    When functions_in reads its function declarations and its constants bound to a function
+    Then each name maps to the function with a body it declares
+    But a name declared twice with a body maps to nothing, because which one runs is not a question this reader answers
+
+  Scenario: _declared_functions reads the functions one declaration binds
+    Given one top-level declaration
+    When _declared_functions reads it as a function declaration or as declarators bound to functions
+    Then it returns each name with its function, when that function has a body
+    But a declarator bound to anything else binds no function here
+
+  Scenario: exports_in lists the functions a module exports
+    Given a module's parse tree
+    When exports_in reads its export statements, named, default and through an export clause
+    Then each exported name maps to its function
+    But a re-export from another module maps to nothing, because reading it would be a second hop
+
+  Scenario: _exported_value finds the function a default export names
+    Given the value of an export default statement and the module's own functions
+    When _exported_value reads it
+    Then a function with a body is itself, and a name is the module's function of that name
+    But anything else exports no function this reader follows
+
+  Scenario: _plain_callee names a call's callee when it is a plain identifier
+    Given a call
+    When _plain_callee reads its function field
+    Then it returns the name when the callee is a plain identifier
+    But a member access, a computed callee or a flat-call grammar gives nothing
+
+  Scenario: callee_function finds the function in this repository a call reaches
+    Given a call and the file's call context
+    When callee_function looks up the plain-name callee among the file's own functions, then its imports
+    Then a same-file function, or an import resolving to a repository file that exports a function of that name, comes back with the context its body is read in, following switched off
+    But a package's callee, a namespace import, an import that resolves to nothing and a re-export all come back as nothing, and the call keeps its silence
+
+  Scenario: _tree parses one repository file once per run
+    Given a path in the repository and the run's project
+    When _tree is asked for its parse tree
+    Then the file is parsed once and the tree kept for the rest of the run
+    But a file that cannot be read, or parses with an error, is nothing, because a body the reader cannot parse is not read
+
+  Scenario: _source reads one file's bytes
+    Given a path
+    When _source reads it
+    Then it returns the file's bytes
+    But a file that cannot be read gives nothing, and the helper in it is not followed
+
+  Scenario: _parsed parses one file's bytes
+    Given a file's bytes, its suffix and the run's language
+    When _parsed parses them with the grammar for that suffix
+    Then it returns the parse tree
+    But a tree the grammar reports an error in gives nothing, because a body the reader cannot parse is not read
+
+  Scenario: candidates lists every file an import could name
+    Given an import specifier, the importing file and the run's project
+    When candidates builds paths relative to the importer or through the project's aliases, as written, with each source suffix and as a directory's index
+    Then it returns them in the order a bundler tries them
+    But never a path under node_modules or outside the repository, and it asks nothing of the disk
+
+  Scenario: _first_on_disk finds which candidate exists
+    Given a list of paths
+    When _first_on_disk asks the filesystem about each in turn
+    Then it returns the first that is a file
+    But it returns nothing when none is, and the import resolves to nothing
+
+  Scenario: parameter names the parameter a function binds an argument to
+    Given a function and an argument position
+    When parameter reads that position's parameter, through a type or a default
+    Then it returns the one name the argument is bound to
+    But a destructured parameter, a rest parameter or a position the function does not take gives nothing
+
+  Scenario: binds says whether a function takes a parameter of a name
+    Given a function and a name
+    When binds reads each of its parameters
+    Then it answers yes when one of them is that name, so a reference to the name inside it means its own parameter
+    But a function that takes no such parameter answers no
 
   Scenario: imports_in lists what an ES module imports
     Given a module's parse tree

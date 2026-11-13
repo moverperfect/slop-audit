@@ -77,6 +77,7 @@ from l1_analyzer.state_reach import (
     _categorize,
     _injected_slot_premise_fails,
     _verdict,
+    tested_in_a_helper,
 )
 from l1_analyzer.state_reading import (
     FileRead,
@@ -227,7 +228,8 @@ def _finding(key: str, refs: list[Node], rel: str, sp: LangSpec, closed_sets: di
     # language can carry - the accumulator rule serves all nine, the other three are still
     # Python-only - so the language gate lives with the rules rather than at the call site,
     # where it used to withhold every rule from eight languages without saying so.
-    if verdict != NEUTRAL and state_bounds_filters.is_false_positive(key, refs, verdict, sp):
+    if verdict != NEUTRAL and state_bounds_filters.is_false_positive(
+            key, refs, verdict, sp, tested_in_a_helper(refs, sp, calls)):
         verdict, drives, silence, construct, partition, silence_line = NEUTRAL, False, "", "", state_partition.EMPTY, 0
     # THE READING WAS INCOMPLETE, and this is the last word on the finding for that reason.
     # `hidden` holds the names that appear inside a region the grammar handed back as tokens,
@@ -373,13 +375,13 @@ def classify(repo: Path, lang: str) -> StateReading:
     # First pass: parse every file and collect the repo's immutable constructors
     # (functions whose returns are all immutable), so a constant built by one can be
     # resolved by a one-level follow. Second pass: analyze with that knowledge.
-    roots: list[tuple[Node, str]] = []
+    roots: list[tuple[Node, str, Path]] = []
     for path, src in files:
         rel = str(path.relative_to(repo)) if (repo in path.parents or path == repo) else str(path)
-        roots.append((parser_for(path.suffix, lang).parse(src).root_node, rel))
+        roots.append((parser_for(path.suffix, lang).parse(src).root_node, rel, path))
     immutable_ctors: set[str] = set()
     if sp is LANG_SPEC["python"]:
-        for root, _rel in roots:
+        for root, _rel, _path in roots:
             immutable_ctors |= _collect_immutable_ctors(root)
 
     findings: list[Finding] = []
@@ -390,11 +392,15 @@ def classify(repo: Path, lang: str) -> StateReading:
     visited: dict[str, set[Site]] = {}
     judged: dict[str, set[Site]] = {}
     # Where the files' callees live, read once for the run: the project's packages and
-    # aliases. None for a language whose module system the reader does not resolve, which
-    # leaves every callee's silence exactly as it was.
-    project = state_callees.project(repo, sp)
-    for root, rel in roots:
-        calls = state_callees.context(project, root) if project is not None else None
+    # aliases, and the trees already parsed above, so a helper in a file under audit is not
+    # parsed twice. None for a language whose module system the reader does not resolve,
+    # which leaves every callee's silence exactly as it was.
+    project = state_callees.project(repo, lang, sp)
+    if project is not None:
+        for root, _rel, path in roots:
+            project["trees"][path.resolve()] = None if root.has_error else root
+    for root, rel, path in roots:
+        calls = state_callees.context(project, path, root, sp, follow=True) if project is not None else None
         read = _analyze_file(root, rel, sp, cfg, immutable_ctors, calls)
         findings.extend(read["findings"])
         visited[rel] = read["visited"]

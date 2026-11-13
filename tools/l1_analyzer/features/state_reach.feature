@@ -113,6 +113,36 @@ Feature: state_reach — how one reference to a piece of state reaches a decisio
     And a plain name imported from a declared package or from Node's own modules is the adopter's external boundary, because the code is under node_modules and only a contract at that edge would make it decidable
     But every other callee keeps the silence silence_kind gives it
 
+  Scenario: _into_the_helper reads a value handed to one of this repository's functions inside that function
+    Given a value passed as itself to a plain-name callee, and the file's call context
+    When _into_the_helper finds the helper and the parameter the value became, and reads that parameter once per run
+    Then what the helper's body does with the parameter is what the call does with the state, and a value that comes back out of the helper carries the state on from the call
+    But following happens one level deep only, and a literal or a spread passed as the argument is not followed
+
+  Scenario: _helper_parameter finds the helper a value is passed to and that parameter's references
+    Given a value, the call it is an argument of, and the file's call context
+    When _helper_parameter resolves the callee, finds the argument's position and the parameter bound there
+    Then it returns the function, the parameter's references inside it, the helper's own context and the position
+    But a call this reader does not follow, a parameter that is not one plain name, or a function with no body gives nothing
+
+  Scenario: tested_in_a_helper says whether a helper the state is handed to tests it
+    Given every reference to a state and the file's call context
+    When tested_in_a_helper reads each reference passed as an argument to a helper this reader follows
+    Then it answers yes when the helper puts the parameter in a test expression
+    But a reference that is not an argument, or a call that is not followed, says nothing
+
+  Scenario: _parameter_reach combines what a helper's body does with one parameter
+    Given the parameter's references inside the helper, and the helper's context
+    When _parameter_reach reads each with the same rows a state's own references get
+    Then an undecided use is the answer, then an unbounded one, then the widest finite one, as a local's uses combine
+    But a body that only hands the value on or writes through it says so, so the caller can follow the call's own value
+
+  Scenario: _binding_function finds the function a reference to a parameter name means
+    Given a reference to a name inside a helper
+    When _binding_function climbs to the nearest enclosing function that takes a parameter of that name
+    Then it returns that function
+    But a nested function with a parameter of its own of that name shadows the helper's, and its references are not the state's
+
   Scenario: _held follows a value an object or array literal holds, or names the alias it went under
     Given a value held by a literal, as an element, a property value or a spread
     When _held reads where the literal goes after reading through parentheses and casts

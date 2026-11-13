@@ -844,9 +844,15 @@ def _is_write_only_accumulator(attr: str, refs: list[Node], sp: LangSpec) -> boo
 
 # --- entry point -----------------------------------------------------------------
 
-def is_false_positive(key: str, refs: list[Node], verdict: str, sp: LangSpec) -> bool:
+def is_false_positive(key: str, refs: list[Node], verdict: str, sp: LangSpec,
+                      tested_elsewhere: bool) -> bool:
     """True when the finding for this attribute is a provable false positive under one of
     the four rules, and should be reclassified NEUTRAL. Conservative: any doubt is False.
+
+    `tested_elsewhere` is the caller's word that a value derived from the state reaches a
+    test expression none of the state's own references sits in: inside one of the
+    repository's helpers the state is handed to. The carried-value rule argues from the
+    state's references alone, so without it that rule clears a state something branches on.
 
     The verdict gates which rules may fire. UNRESOLVED means the classifier could not decide
     the reaching set (dynamic dispatch, an unknown callee): that is a genuine fail-closed
@@ -935,4 +941,8 @@ def is_false_positive(key: str, refs: list[Node], verdict: str, sp: LangSpec) ->
     # in front of both turned five languages promiscuous on `presence-test-branches-converge`,
     # a per-key tally whose key is open throughout and which the vectors declare neutral for
     # exactly that reason.
-    return _drives_no_decision(refs, sp)
+    #
+    # And a test the state's own references do not show is still a test. Read through a
+    # helper, `pick(S, k)` is `if (table[key])` with S as the table; the decision is real and
+    # sits in another function, which is the one place this rule never looked.
+    return not tested_elsewhere and _drives_no_decision(refs, sp)
