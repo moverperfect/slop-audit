@@ -111,6 +111,7 @@ Feature: state_reach — how one reference to a piece of state reaches a decisio
     When _argument_reach checks the language's writing, bounded and effect builtins, then where the callee comes from
     Then a writing builtin is a write, a bounded one hands its result on and an effect is output
     And a plain name imported from a declared package or from Node's own modules is the adopter's external boundary, because the code is under node_modules and only a contract at that edge would make it decidable
+    And so is a platform global, a name an ES module neither binds nor imports, because that code is the runtime's and not in the repository at all
     But every other callee keeps the silence silence_kind gives it
 
   Scenario: _into_the_helper reads a value handed to one of this repository's functions inside that function

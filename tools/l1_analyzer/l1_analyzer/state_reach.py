@@ -733,7 +733,8 @@ def _argument_reach(value: Node, call: Node | None, sp: LangSpec, closed_sets: d
         return _flow(call, sp, closed_sets, cells, depth, calls)
     if fname in _EFFECT_CALLS:
         return state_partition.output()
-    if calls is not None and state_callees.imported_from_a_package(call, calls, sp):
+    if calls is not None and (state_callees.imported_from_a_package(call, calls, sp)
+                              or state_callees.is_platform_global(call, calls, sp)):
         return state_partition.undecided(state_partition.EXTERNAL_BOUNDARY)
     followed = _into_the_helper(value, call, sp, closed_sets, cells, depth, calls)
     if followed is not None:

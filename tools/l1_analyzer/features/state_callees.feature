@@ -46,7 +46,7 @@ Feature: state_callees — where a plain-name callee lives, for the state reader
 
   Scenario: context makes one file's calls readable
     Given the run's project, one file's path and parse tree, and whether its helpers may be followed
-    When context reads the file's imports and its top-level functions
+    When context reads the file's imports, its top-level functions, whether it is an ES module and every name it binds
     Then it returns them beside the project, for the argument rows to consult
     But it reads nothing outside the file it is given, and inside a helper already being read following is switched off
 
@@ -151,3 +151,27 @@ Feature: state_callees — where a plain-name callee lives, for the state reader
     When package_of takes its leading segments
     Then a scoped specifier names its scope and package, any other names its first segment, and a bundler's virtual module names the package before its colon
     But it says nothing about whether that package is declared, which is is_external's question
+
+  Scenario: is_es_module decides whether a file's undeclared names can only be the platform's
+    Given a file's parse tree and its suffix
+    When is_es_module reads the suffix, then the file's top-level statements
+    Then a .mjs or .mts file is a module, a .cjs or .cts file is not, and any other file is one when it imports or exports at its top level
+    But a file with neither is a script sharing one global scope with the project's other scripts, so a name it does not declare may still be the project's
+
+  Scenario: bound_names lists every name a file binds, anywhere in it
+    Given a file's parse tree
+    When bound_names walks it for declarations, destructuring, parameters, catch parameters and loop bindings
+    Then it returns every name those bind, at any depth and in any function
+    But a name bound only inside an unrelated function still counts, because erring this way leaves a global filed as ours and never moves the project's own code to the adopter
+
+  Scenario: _pattern_names reads the names one binding pattern binds
+    Given a binding pattern: a name, a destructuring pattern or a parameter
+    When _pattern_names collects the identifiers inside it
+    Then it returns each bound name, a TypeScript class's type name among them
+    But a default value or a type annotation inside the pattern uses names rather than binding them, and is skipped
+
+  Scenario: is_platform_global says whether a call's callee is a global the platform provides
+    Given a call, the file's call context and the language spec
+    When is_platform_global looks the plain-name callee up among the file's bound names and imports
+    Then in an ES module a name the file neither binds nor imports is a platform global: fetch, Response, URLSearchParams, getComputedStyle
+    But in a script or a CommonJS file no name is, and a callee that is not a plain name never is

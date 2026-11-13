@@ -92,12 +92,15 @@ class CallContext(TypedDict):
     name: (specifier, imported name)}, and the functions it declares at its top level.
 
     `follow` is False inside a helper already being read, which is what keeps the reading
-    one level deep."""
+    one level deep. `module` says whether the file is an ES module, whose undeclared names can
+    only be the platform's, and `bound` is every name the file binds anywhere."""
     project: Project
     path: Path
     imports: dict[str, tuple[str, str]]
     functions: dict[str, Node | None]
     follow: bool
+    module: bool
+    bound: frozenset[str]
 
 
 def project(repo: Path, lang: str, sp: LangSpec) -> Project | None:
@@ -200,9 +203,89 @@ def _without_trailing_commas(text: str, closer: str) -> str:
 
 
 def context(project_: Project, path: Path, root: Node, sp: LangSpec, follow: bool) -> CallContext:
-    """One file's calls, readable: what it imports and which functions it declares."""
+    """One file's calls, readable: what it imports, which functions it declares, whether it
+    is an ES module and which names it binds."""
     return {"project": project_, "path": path.resolve(), "imports": imports_in(root),
-            "functions": functions_in(root, sp), "follow": follow}
+            "functions": functions_in(root, sp), "follow": follow,
+            "module": is_es_module(root, path.suffix), "bound": bound_names(root)}
+
+
+# The suffixes that settle what a file is whatever it holds.
+_MODULE_SUFFIXES = (".mjs", ".mts")
+_COMMONJS_SUFFIXES = (".cjs", ".cts")
+
+
+def is_es_module(root: Node, suffix: str) -> bool:
+    """Whether a file is an ES module: always for `.mjs` and `.mts`, never for `.cjs` and
+    `.cts`, and otherwise when it has a top-level `import` or `export`, which is TypeScript's
+    own `moduleDetection: auto` rule. A file with neither is a script, sharing one global scope
+    with every other script, so a name it does not declare may be declared by another of them.
+
+    `package.json`'s `"type": "module"` is not consulted. A `.js` file under it with no import
+    or export is an ES module to Node, and here it reads as a script, which leaves its globals
+    ours: the direction that moves nothing to the adopter."""
+    if suffix in _MODULE_SUFFIXES:
+        return True
+    if suffix in _COMMONJS_SUFFIXES:
+        return False
+    return any(c.type in ("import_statement", "export_statement") for c in root.children)
+
+
+# Where a name is BOUND rather than used, as {node type: the field holding the binding}.
+_BINDING_FIELDS = {
+    "variable_declarator": "name", "function_declaration": "name",
+    "generator_function_declaration": "name", "function_expression": "name",
+    "class_declaration": "name", "abstract_class_declaration": "name", "class": "name",
+    "enum_declaration": "name", "internal_module": "name", "arrow_function": "parameter",
+    "catch_clause": "parameter", "for_in_statement": "left",
+}
+# Inside a binding pattern, the fields that hold something else: a default value or a type.
+_NOT_BINDING = ("value", "right", "type")
+
+
+def bound_names(root: Node) -> frozenset[str]:
+    """Every name the file binds anywhere: declarations, destructuring, every function's
+    parameters, catch parameters and loop bindings, at any depth.
+
+    Generous on purpose. A name bound anywhere in the file, even as a parameter of an
+    unrelated function, is kept as ours rather than taken for the platform's, so erring
+    can only leave a global filed as ours, never move our code to the adopter."""
+    names: set[str] = set()
+    stack = [root]
+    while stack:
+        node = stack.pop()
+        stack.extend(node.children)
+        field_name = _BINDING_FIELDS.get(node.type)
+        binding = _field(node, field_name) if field_name else None
+        if binding is not None:
+            names |= _pattern_names(binding)
+        if node.type == "formal_parameters":
+            for param in node.named_children:
+                names |= _pattern_names(param)
+    return frozenset(names)
+
+
+def _pattern_names(pattern: Node) -> set[str]:
+    """The names a binding pattern binds: the identifiers in it, a TypeScript class's
+    `type_identifier` name among them, leaving out default values and type annotations,
+    which use names rather than bind them."""
+    found: set[str] = set()
+    stack = [pattern]
+    while stack:
+        node = stack.pop()
+        if node.type in ("identifier", "type_identifier", "shorthand_property_identifier_pattern"):
+            found.add(_text(node))
+        stack.extend(c for i, c in enumerate(node.children)
+                     if node.field_name_for_child(i) not in _NOT_BINDING)
+    return found
+
+
+def is_platform_global(call: Node | None, calls: CallContext, sp: LangSpec) -> bool:
+    """Whether a call's plain-name callee, in an ES module, is a name the file neither binds
+    nor imports: a global, which the platform provides and this repository does not."""
+    name = _plain_callee(call, sp)
+    return (bool(name) and calls["module"] and name not in calls["bound"]
+            and name not in calls["imports"])
 
 
 def imports_in(root: Node) -> dict[str, tuple[str, str]]:
