@@ -62,7 +62,11 @@ def test_a_template_compared_is_a_split(tmp_path, lang, name):
 @pytest.mark.parametrize("lang,name", _LANGS)
 def test_a_template_handed_to_an_unknown_callee_stops_there(tmp_path, lang, name):
     """Not cleared: the callee can decide on the string. The silence moves from a construct
-    nobody taught the reader to the callee nobody modeled."""
+    nobody taught the reader to the callee nobody modeled.
+
+    `send` is the project's own, imported from a file this reader cannot open. Left
+    undeclared, an ES module could only be calling a platform global, the adopter's boundary."""
     found = _finding(tmp_path, name,
+                     "import { send } from './transport';\n"
                      "export let S = 'a';\nexport function f() { send(`${S}`); }\n", lang)
     assert (found["verdict"], found["silence"]) == ("unresolved", "unmodeled_callee")

@@ -71,7 +71,9 @@ def test_a_literal_that_is_returned_is_output(tmp_path, lang, name, body):
     "export function f() { send(...S); }",
 ])
 def test_a_literal_handed_to_an_unknown_callee_stops_there(tmp_path, lang, name, body):
-    found = _finding(tmp_path, name, _HEAD + body + "\n", lang)
+    # `send` is the project's own, imported from a file this reader cannot open. Left
+    # undeclared, an ES module could only be calling a platform global, the adopter's boundary.
+    found = _finding(tmp_path, name, "import { send } from './transport';\n" + _HEAD + body + "\n", lang)
     assert (found["verdict"], found["silence"]) == ("unresolved", "unmodeled_callee")
 
 
