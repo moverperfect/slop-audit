@@ -37,7 +37,7 @@ def _reach(lang: str, src: str, name: str, line: int) -> dict:
         if not node.children and state_bounds._text(node) == name \
                 and node.start_point[0] + 1 == line:
             found.append(state_bounds._categorize(node, spec, closed, None,
-                                                    state_bounds._REACH_DEPTH))
+                                                    state_bounds._REACH_DEPTH, None))
         for child in node.children:
             walk(child)
 
