@@ -161,4 +161,41 @@ mod tests {
         assert_eq!(row.band, "Slop");
         let _ = fs::remove_dir_all(&root);
     }
+
+    #[test]
+    fn a_jenkinsfile_is_read_for_the_command_it_runs() {
+        let root = scratch("jenkins");
+        fs::write(
+            root.join("Jenkinsfile"),
+            "pipeline { stages { stage('Lint') { steps { sh 'ruff check .' } } } }\n",
+        )
+        .unwrap();
+        let row = l1_10(&root);
+        assert_eq!(row.value, "1");
+        assert!(row.details.contains("static checks (Jenkinsfile)"));
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_quoted_github_expression_does_not_drop_the_workflow() {
+        let root = scratch("quoted-expr");
+        fs::create_dir_all(root.join(".github/workflows")).unwrap();
+        fs::write(
+            root.join(".github/workflows/ci.yml"),
+            concat!(
+                "on: push\n",
+                "jobs:\n",
+                "  t:\n",
+                "    env:\n",
+                "      TOKEN: \"${{ secrets.TOKEN }}\"\n",
+                "    steps:\n",
+                "      - run: pytest -q\n",
+            ),
+        )
+        .unwrap();
+        let row = l1_10(&root);
+        assert_eq!(row.value, "1");
+        assert!(row.details.contains("test (.github/workflows/ci.yml)"));
+        let _ = fs::remove_dir_all(&root);
+    }
 }

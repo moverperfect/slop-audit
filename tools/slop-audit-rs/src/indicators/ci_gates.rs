@@ -199,14 +199,22 @@ fn url_re() -> &'static Regex {
     RE.get_or_init(|| Regex::new(r"(?i)^https?://").unwrap())
 }
 
-fn jenkins_step() -> &'static Regex {
-    static RE: OnceLock<Regex> = OnceLock::new();
+fn jenkins_step() -> &'static FancyRegex {
+    static RE: OnceLock<FancyRegex> = OnceLock::new();
     RE.get_or_init(|| {
-        Regex::new(r#"(?s)\b(?:sh|bat|powershell|pwsh)\s*\(?\s*(?:script\s*:\s*)?('''|"""|'|")(.*?)\1"#).unwrap()
+        // Backreference `\1` closes the same quote the opener captured. The `regex`
+        // crate cannot compile that; fancy-regex can, and a Jenkinsfile must not
+        // panic the audit.
+        FancyRegex::new(r#"(?s)\b(?:sh|bat|powershell|pwsh)\s*\(?\s*(?:script\s*:\s*)?('''|"""|'|")(.*?)\1"#)
+            .expect("jenkins step pattern")
     })
 }
 
-/// Quote `${{ ... }}` so YAML parsers that treat `{` as a flow map still load the file.
+/// Replace `${{ ... }}` so YAML parsers that treat `{` as a flow map still load the file.
+///
+/// Unquoted, because a workflow that already wrote `"${{ secrets.TOKEN }}"` would
+/// become `""__CI_EXPR__""` and fail to parse, which silently dropped every gate
+/// in that file.
 fn quote_ci_expressions(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     let mut rest = text;
@@ -214,7 +222,7 @@ fn quote_ci_expressions(text: &str) -> String {
         out.push_str(&rest[..start]);
         let after = &rest[start + 3..];
         if let Some(end) = after.find("}}") {
-            out.push_str("\"__CI_EXPR__\"");
+            out.push_str("__CI_EXPR__");
             rest = &after[end + 2..];
         } else {
             out.push_str("${{");
@@ -868,7 +876,11 @@ fn jenkins(path: &str, text: &str) -> Vec<Step> {
     };
     jenkins_step()
         .captures_iter(text)
-        .map(|cap| make_step(&at, "run", cap[2].to_string(), false))
+        .flatten()
+        .filter_map(|cap| {
+            cap.get(2)
+                .map(|m| make_step(&at, "run", m.as_str().to_string(), false))
+        })
         .collect()
 }
 
