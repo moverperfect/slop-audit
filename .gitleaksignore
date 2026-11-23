@@ -1,0 +1,34 @@
+# Fingerprints for invented credential specimens that gitleaks detect reports
+# in git history. Each line is one finding from secret-scan.yml on main at
+# 5404e07. A real key in the same file still fails: these entries name a
+# commit, path, rule and line, not a directory and not a rule.
+#
+# tools/slop-audit-rs/src/indicators/secret_rules.rs
+# Keyboard-walk AWS key the unit test must spell out so the scanner under test
+# can see a whole credential. Introduced when the fixture stopped assembling
+# the string at runtime.
+21dea73e483bea21d9c4ab912c5abd5bff905604:tools/slop-audit-rs/src/indicators/secret_rules.rs:aws-access-token:397
+# Sentence that mentions a PEM header, plus a body that decodes to the words
+# "TheContentBase64EncodedBodyHere". The rule exists to ignore that sentence.
+8c318088c827dcbb074c283dde70ae47f5c9a01c:tools/slop-audit-rs/src/indicators/secret_rules.rs:private-key:413
+# Invented 20-character token used as AUTH0_CLIENT_SECRET in the dotenv case.
+8c318088c827dcbb074c283dde70ae47f5c9a01c:tools/slop-audit-rs/src/indicators/secret_rules.rs:generic-api-key:430
+#
+# tools/slop-audit-rs/src/indicators/secret_scan.rs
+# Same keyboard-walk AWS key, written three times in the tests that prove the
+# meter counts distinct secrets, scopes test-tree hits, and skips lockfiles.
+# Later commits assemble it at runtime; these fingerprints are the history.
+8c318088c827dcbb074c283dde70ae47f5c9a01c:tools/slop-audit-rs/src/indicators/secret_scan.rs:aws-access-token:332
+8c318088c827dcbb074c283dde70ae47f5c9a01c:tools/slop-audit-rs/src/indicators/secret_scan.rs:aws-access-token:349
+8c318088c827dcbb074c283dde70ae47f5c9a01c:tools/slop-audit-rs/src/indicators/secret_scan.rs:aws-access-token:365
+#
+# tools/l1_analyzer/tests/test_secret_scan.py
+# Stripe live-key prefix plus invented digits. The file says it is the one
+# copy of that shape the Python meter is meant to catch.
+061c1ce66f024470915b14b9d31f615785c5e0e9:tools/l1_analyzer/tests/test_secret_scan.py:stripe-access-token:106
+#
+# tools/l1_analyzer/tests/test_the_scan_says_what_clears_its_own_count.py
+# Earlier copy of the same fixtures, written inline before that test imported
+# them from test_secret_scan.py so they would not be counted twice.
+f50c3243a604d1d654a4cf3518b48cee57b4ce19:tools/l1_analyzer/tests/test_the_scan_says_what_clears_its_own_count.py:generic-api-key:30
+f50c3243a604d1d654a4cf3518b48cee57b4ce19:tools/l1_analyzer/tests/test_the_scan_says_what_clears_its_own_count.py:stripe-access-token:31
