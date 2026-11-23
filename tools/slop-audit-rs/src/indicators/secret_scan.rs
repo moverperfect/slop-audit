@@ -179,7 +179,7 @@ pub fn walk(repo: &Path) -> (Vec<Hit>, usize, usize, bool) {
         scanned += 1;
         let bucket = crate::bucket_reason(path, repo, has_packages, crate::PRODUCTION,
                                           crate::PRODUCTION_BUCKETS, &disowned);
-        let in_tests = matches!(bucket, Some("tests") | Some("test"));
+        let in_tests = crate::is_a_test_reason(bucket);
         // A test can also be a REGION of a production file. Rust writes its unit tests inside
         // the file they test, so no path names them, and this scanner reported a twenty-
         // character AWS key written as a fixture in this crate's own secret_rules.rs as being

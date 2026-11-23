@@ -6,7 +6,7 @@
 //! Healthy at zero, Slop otherwise. This hand-rolls the Python regex so it needs no
 //! regex dependency.
 
-use crate::{in_ignored_dir, Indicator, is_file_entry, py_splitlines, walk_repo};
+use crate::{Indicator, is_file_entry, py_splitlines, walk_repo};
 use std::collections::HashSet;
 use std::path::Path;
 
@@ -92,6 +92,20 @@ fn windows_arm(chars: &[char], i: usize) -> Option<usize> {
     Some(j - i)
 }
 
+fn elided() -> &'static regex::Regex {
+    static RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    RE.get_or_init(|| regex::Regex::new(r"/\.{3,}/|\\\.{3,}\\").unwrap())
+}
+
+fn file_at_the_media_root() -> &'static regex::Regex {
+    static RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    RE.get_or_init(|| regex::Regex::new(r"^/media/[^/]+\.[A-Za-z0-9]{1,5}$").unwrap())
+}
+
+fn keep_match(path: &str) -> bool {
+    !elided().is_match(path) && !file_at_the_media_root().is_match(path)
+}
+
 /// Count non-overlapping matches on one line, mirroring re.finditer with the unix arm
 /// tried before the windows arm at each position.
 fn count_line(line: &str) -> usize {
@@ -101,7 +115,10 @@ fn count_line(line: &str) -> usize {
     while i < chars.len() {
         match unix_arm(&chars, i).or_else(|| windows_arm(&chars, i)) {
             Some(len) => {
-                n += 1;
+                let matched: String = chars[i..i + len].iter().collect();
+                if keep_match(&matched) {
+                    n += 1;
+                }
                 i += len;
             }
             None => i += 1,
@@ -116,8 +133,8 @@ fn count_line(line: &str) -> usize {
 /// scanning the test tree measures the fixtures, not the code.
 fn production_files(repo: &Path) -> Vec<(std::path::PathBuf, String)> {
     let mut out = Vec::new();
-    // What the project itself says is not part of it, read once.
     let disowned = crate::ignored_paths(repo);
+    let has_packages = crate::repo_has_packages(repo);
     for entry in walk_repo(repo) {
         if !is_file_entry(&entry) {
             continue;
@@ -130,14 +147,16 @@ fn production_files(repo: &Path) -> Vec<(std::path::PathBuf, String)> {
         if !CODE_EXTS.contains(&ext.as_str()) {
             continue;
         }
-        if in_ignored_dir(path) {
-            continue;
-        }
-        if !disowned.is_empty()
-            && path.canonicalize().map(|p| disowned.contains(&p)).unwrap_or(false) {
-            continue;
-        }
-        if crate::extra_reason(path, crate::PRODUCTION).is_some() {
+        if crate::bucket_reason(
+            path,
+            repo,
+            has_packages,
+            crate::PRODUCTION,
+            crate::PRODUCTION_BUCKETS,
+            &disowned,
+        )
+        .is_some()
+        {
             continue;
         }
         if let Ok(bytes) = std::fs::read(path) {
@@ -147,7 +166,7 @@ fn production_files(repo: &Path) -> Vec<(std::path::PathBuf, String)> {
             // crate writes those tests inside the file under test, so no path names them.
             let (bytes, _region_lines) =
                 crate::test_regions::blanked(&bytes, &format!(".{ext}"));
-            out.push((path.to_path_buf(), String::from_utf8_lossy(&bytes).into_owned()));
+            out.push((path.to_path_buf(), crate::decode_ignoring_invalid(&bytes)));
         }
     }
     out
