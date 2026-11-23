@@ -41,9 +41,12 @@ def card_links() -> list[str]:
             for href in _HREF.findall(path.read_text())]
 
 
-@boundary
 def repo_root() -> Path:
-    """The checkout this test is running inside."""
+    """The checkout this test is running inside.
+
+    Not a boundary: it computes a path from `__file__` and obtains nothing. Stamping
+    it `@boundary` stated an edge that is not there, which is the finding
+    `test_every_declared_boundary_actually_obtains_something` exists to catch."""
     return Path(__file__).resolve().parent.parent.parent.parent
 
 

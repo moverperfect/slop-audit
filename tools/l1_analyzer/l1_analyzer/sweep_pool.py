@@ -141,6 +141,30 @@ def copy_commands(source: str, destination: str) -> list[tuple[list[str], str]]:
             for command, how in COPY_COMMANDS]
 
 
+def _ignore_destination(repo: Path, destination: Path):
+    """Skip the destination's top directory when it lives inside the source.
+
+    `cp -R` of a tree into a subdirectory of itself copies the growing copy, which
+    never finishes. The tests put the work root under the fixture repo; a caller
+    that did the same in production would hit the same loop. `cp` has no exclude,
+    so that case goes to copytree with this ignore."""
+    try:
+        rel = destination.resolve().relative_to(repo.resolve())
+    except ValueError:
+        return None
+    if not rel.parts:
+        return None
+    skip = rel.parts[0]
+    repo_r = repo.resolve()
+
+    def ignore(src, names):
+        if Path(src).resolve() == repo_r and skip in names:
+            return [skip]
+        return []
+
+    return ignore
+
+
 @boundary
 def copy_checkout(repo: Path, destination: Path) -> str:
     """One copy of the repository, and how it was made, or nothing when it could not be.
@@ -161,23 +185,30 @@ def copy_checkout(repo: Path, destination: Path) -> str:
     exists, which reports that instead of the real cause and sends the reader to the wrong
     problem."""
     shutil.rmtree(destination, ignore_errors=True)
-    for command, name in copy_commands(str(repo), str(destination)):
-        # check=False: a refused flag is the answer this loop is asking for, and the next
-        # command is the fallback.
-        if subprocess.run(command, capture_output=True, check=False).returncode == 0:
-            return name
-        shutil.rmtree(destination, ignore_errors=True)
-    return _copy_tree(repo, destination)
+    ignore = _ignore_destination(repo, destination)
+    if ignore is None:
+        for command, name in copy_commands(str(repo), str(destination)):
+            # check=False: a refused flag is the answer this loop is asking for, and the next
+            # command is the fallback.
+            if subprocess.run(command, capture_output=True, check=False).returncode == 0:
+                return name
+            shutil.rmtree(destination, ignore_errors=True)
+    return _copy_tree(repo, destination, ignore)
 
 
 @boundary
-def _copy_tree(repo: Path, destination: Path) -> str:
+def _copy_tree(repo: Path, destination: Path, ignore=None) -> str:
     """The last resort, where no cp on this machine would do it.
 
     Nothing rather than a raise, for the reason the caller gives: a sweep that has already
-    bought every proposal must not be thrown away because one directory would not copy."""
+    bought every proposal must not be thrown away because one directory would not copy.
+
+    When the destination sits inside the source, the ignore is applied here too, so a
+    caller that reaches this function directly cannot copy the growing copy into itself."""
+    if ignore is None:
+        ignore = _ignore_destination(repo, destination)
     try:
-        shutil.copytree(repo, destination)
+        shutil.copytree(repo, destination, ignore=ignore)
     except OSError:
         shutil.rmtree(destination, ignore_errors=True)
         return ""
