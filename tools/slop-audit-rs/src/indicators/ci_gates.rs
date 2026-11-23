@@ -155,58 +155,32 @@ fn compiled(patterns: &[&str]) -> FancyRegex {
     .expect("gate command pattern")
 }
 
-fn command_res() -> &'static HashMap<&'static str, FancyRegex> {
-    static RES: OnceLock<HashMap<&'static str, FancyRegex>> = OnceLock::new();
-    RES.get_or_init(|| {
-        COMMANDS
-            .iter()
-            .map(|(cat, pats)| (*cat, compiled(pats)))
-            .collect()
-    })
+struct Patterns {
+    commands: HashMap<&'static str, FancyRegex>,
+    against: FancyRegex,
+    health: Regex,
+    inert: Regex,
+    script_call: FancyRegex,
+    parameter: Regex,
+    url: Regex,
+    jenkins: FancyRegex,
 }
 
-fn against_re() -> &'static FancyRegex {
-    static RE: OnceLock<FancyRegex> = OnceLock::new();
-    RE.get_or_init(|| compiled(AGAINST_A_SYSTEM))
-}
-
-fn health_re() -> &'static Regex {
-    static RE: OnceLock<Regex> = OnceLock::new();
-    RE.get_or_init(|| Regex::new(&format!("(?i){}", HEALTH_CHECKS.join("|"))).unwrap())
-}
-
-fn inert_line() -> &'static Regex {
-    static RE: OnceLock<Regex> = OnceLock::new();
-    RE.get_or_init(|| {
-        Regex::new(r"(?i)^\s*(?:#|$|(?:echo|printf|write-host|write-output|:|true)(?:\s|$))").unwrap()
-    })
-}
-
-fn script_call() -> &'static FancyRegex {
-    static RE: OnceLock<FancyRegex> = OnceLock::new();
-    RE.get_or_init(|| {
-        FancyRegex::new(r"(?i)(?<![\w.-])(npm|pnpm|yarn|bun)\s+(run(?:-script)?\s+)?([\w:./-]+)").unwrap()
-    })
-}
-
-fn parameter_re() -> &'static Regex {
-    static RE: OnceLock<Regex> = OnceLock::new();
-    RE.get_or_init(|| Regex::new(r"\$\{\{\s*parameters\.([A-Za-z0-9_]+)\s*\}\}").unwrap())
-}
-
-fn url_re() -> &'static Regex {
-    static RE: OnceLock<Regex> = OnceLock::new();
-    RE.get_or_init(|| Regex::new(r"(?i)^https?://").unwrap())
-}
-
-fn jenkins_step() -> &'static FancyRegex {
-    static RE: OnceLock<FancyRegex> = OnceLock::new();
-    RE.get_or_init(|| {
+fn patterns() -> &'static Patterns {
+    static P: OnceLock<Patterns> = OnceLock::new();
+    P.get_or_init(|| Patterns {
+        commands: COMMANDS.iter().map(|(cat, pats)| (*cat, compiled(pats))).collect(),
+        against: compiled(AGAINST_A_SYSTEM),
+        health: Regex::new(&format!("(?i){}", HEALTH_CHECKS.join("|"))).unwrap(),
+        inert: Regex::new(r"(?i)^\s*(?:#|$|(?:echo|printf|write-host|write-output|:|true)(?:\s|$))").unwrap(),
+        script_call: FancyRegex::new(r"(?i)(?<![\w.-])(npm|pnpm|yarn|bun)\s+(run(?:-script)?\s+)?([\w:./-]+)").unwrap(),
+        parameter: Regex::new(r"\$\{\{\s*parameters\.([A-Za-z0-9_]+)\s*\}\}").unwrap(),
+        url: Regex::new(r"(?i)^https?://").unwrap(),
         // Backreference `\1` closes the same quote the opener captured. The `regex`
         // crate cannot compile that; fancy-regex can, and a Jenkinsfile must not
         // panic the audit.
-        FancyRegex::new(r#"(?s)\b(?:sh|bat|powershell|pwsh)\s*\(?\s*(?:script\s*:\s*)?('''|"""|'|")(.*?)\1"#)
-            .expect("jenkins step pattern")
+        jenkins: FancyRegex::new(r#"(?s)\b(?:sh|bat|powershell|pwsh)\s*\(?\s*(?:script\s*:\s*)?('''|"""|'|")(.*?)\1"#)
+            .expect("jenkins step pattern"),
     })
 }
 
@@ -291,7 +265,7 @@ fn names_a_url(values: Option<&Value>) -> bool {
         };
         (name.to_lowercase().ends_with("url") && !empty)
             || value
-                .map(|v| url_re().is_match(&yaml_str(v)))
+                .map(|v| patterns().url.is_match(&yaml_str(v)))
                 .unwrap_or(false)
     })
 }
@@ -321,14 +295,14 @@ fn scripts_from(manifest: &str) -> HashMap<String, String> {
 fn expanded(script: &str, scripts: &HashMap<String, String>) -> String {
     let mut text: String = script
         .split('\n')
-        .filter(|line| !inert_line().is_match(line))
+        .filter(|line| !patterns().inert.is_match(line))
         .collect::<Vec<_>>()
         .join("\n");
     for _ in 0..4 {
         let mut replaced = String::new();
         let mut last = 0;
         let mut any = false;
-        for caps in script_call().captures_iter(&text).flatten() {
+        for caps in patterns().script_call.captures_iter(&text).flatten() {
             let m = caps.get(0).unwrap();
             replaced.push_str(&text[last..m.start()]);
             replaced.push_str(&script_body(&caps, scripts));
@@ -390,14 +364,14 @@ fn covers(step: &Step, scripts: &HashMap<String, String>, after_a_deploy: bool) 
         return covered;
     }
     let text = expanded(&step.text, scripts);
-    let res = command_res();
+    let res = &patterns().commands;
     let mut covered: HashSet<String> = res
         .iter()
         .filter(|(_, pattern)| fancy_search(pattern, &text).is_some())
         .map(|(cat, _)| (*cat).to_string())
         .collect();
-    let system = fancy_search(against_re(), &text);
-    let health = health_re().find(&text).is_some();
+    let system = fancy_search(&patterns().against, &text);
+    let health = patterns().health.find(&text).is_some();
     let deploy = res.get("deploy").and_then(|p| fancy_search(p, &text));
     let targeted = after_a_deploy
         || step.url
@@ -494,7 +468,7 @@ fn azure(
     let mut values = defaults(map_get(raw_map, "parameters"));
     values.extend(passed.iter().map(|(k, v)| (k.clone(), v.clone())));
     let original = source(path);
-    let substituted = parameter_re().replace_all(&original, |caps: &regex::Captures| {
+    let substituted = patterns().parameter.replace_all(&original, |caps: &regex::Captures| {
         scalar(values.get(&caps[1]), &caps[0])
     });
     let data = if values.is_empty() {
@@ -874,7 +848,7 @@ fn jenkins(path: &str, text: &str) -> Vec<Step> {
         job: path.into(),
         url: false,
     };
-    jenkins_step()
+    patterns().jenkins
         .captures_iter(text)
         .flatten()
         .filter_map(|cap| {

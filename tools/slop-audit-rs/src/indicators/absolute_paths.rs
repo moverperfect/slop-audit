@@ -92,18 +92,15 @@ fn windows_arm(chars: &[char], i: usize) -> Option<usize> {
     Some(j - i)
 }
 
-fn elided() -> &'static regex::Regex {
-    static RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
-    RE.get_or_init(|| regex::Regex::new(r"/\.{3,}/|\\\.{3,}\\").unwrap())
-}
-
-fn file_at_the_media_root() -> &'static regex::Regex {
-    static RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
-    RE.get_or_init(|| regex::Regex::new(r"^/media/[^/]+\.[A-Za-z0-9]{1,5}$").unwrap())
-}
-
 fn keep_match(path: &str) -> bool {
-    !elided().is_match(path) && !file_at_the_media_root().is_match(path)
+    static SKIP: std::sync::OnceLock<(regex::Regex, regex::Regex)> = std::sync::OnceLock::new();
+    let (elided, media) = SKIP.get_or_init(|| {
+        (
+            regex::Regex::new(r"/\.{3,}/|\\\.{3,}\\").unwrap(),
+            regex::Regex::new(r"^/media/[^/]+\.[A-Za-z0-9]{1,5}$").unwrap(),
+        )
+    });
+    !elided.is_match(path) && !media.is_match(path)
 }
 
 /// Count non-overlapping matches on one line, mirroring re.finditer with the unix arm

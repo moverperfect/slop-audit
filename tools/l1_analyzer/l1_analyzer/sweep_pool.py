@@ -148,14 +148,11 @@ def _ignore_destination(repo: Path, destination: Path):
     never finishes. The tests put the work root under the fixture repo; a caller
     that did the same in production would hit the same loop. `cp` has no exclude,
     so that case goes to copytree with this ignore."""
-    try:
-        rel = destination.resolve().relative_to(repo.resolve())
-    except ValueError:
-        return None
-    if not rel.parts:
-        return None
-    skip = rel.parts[0]
     repo_r = repo.resolve()
+    dest_r = destination.resolve()
+    if dest_r == repo_r or repo_r not in dest_r.parents:
+        return None
+    skip = dest_r.relative_to(repo_r).parts[0]
 
     def ignore(src, names):
         if Path(src).resolve() == repo_r and skip in names:
@@ -193,11 +190,11 @@ def copy_checkout(repo: Path, destination: Path) -> str:
             if subprocess.run(command, capture_output=True, check=False).returncode == 0:
                 return name
             shutil.rmtree(destination, ignore_errors=True)
-    return _copy_tree(repo, destination, ignore)
+    return _copy_tree(repo, destination)
 
 
 @boundary
-def _copy_tree(repo: Path, destination: Path, ignore=None) -> str:
+def _copy_tree(repo: Path, destination: Path) -> str:
     """The last resort, where no cp on this machine would do it.
 
     Nothing rather than a raise, for the reason the caller gives: a sweep that has already
@@ -205,10 +202,8 @@ def _copy_tree(repo: Path, destination: Path, ignore=None) -> str:
 
     When the destination sits inside the source, the ignore is applied here too, so a
     caller that reaches this function directly cannot copy the growing copy into itself."""
-    if ignore is None:
-        ignore = _ignore_destination(repo, destination)
     try:
-        shutil.copytree(repo, destination, ignore=ignore)
+        shutil.copytree(repo, destination, ignore=_ignore_destination(repo, destination))
     except OSError:
         shutil.rmtree(destination, ignore_errors=True)
         return ""
