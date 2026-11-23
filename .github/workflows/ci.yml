@@ -16,6 +16,11 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
+    env:
+      # GitHub's Windows runner uses a locale code page. Collection reads source as
+      # that page unless Python is in UTF-8 mode, and one module then raises before
+      # any test runs. Harmless on Linux, where UTF-8 is already the default.
+      PYTHONUTF8: "1"
     defaults:
       run:
         working-directory: tools/l1_analyzer

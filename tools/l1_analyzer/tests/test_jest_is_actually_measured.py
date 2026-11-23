@@ -57,10 +57,14 @@ TESTS = (
 
 
 def _registry_reachable() -> bool:
-    if shutil.which("npm") is None:
+    npm = shutil.which("npm")
+    if npm is None:
         return False
-    probe = subprocess.run(["npm", "ping", "--loglevel=error"],
-                           capture_output=True, timeout=120, check=False)
+    try:
+        probe = subprocess.run([npm, "ping", "--loglevel=error"],
+                               capture_output=True, timeout=120, check=False)
+    except OSError:
+        return False
     return probe.returncode == 0
 
 
@@ -75,8 +79,14 @@ def jest_project(tmp_path_factory) -> pathlib.Path:
     (root / "band.js").write_text(SOURCE)
     (root / "__tests__").mkdir()
     (root / "__tests__" / "band.test.js").write_text(TESTS)
-    install = subprocess.run(["npm", "install", "--silent", "--no-audit", "--no-fund"],
-                             cwd=root, capture_output=True, text=True, timeout=900, check=False)
+    npm = shutil.which("npm")
+    if npm is None:
+        pytest.skip("npm is not on PATH")
+    try:
+        install = subprocess.run([npm, "install", "--silent", "--no-audit", "--no-fund"],
+                                 cwd=root, capture_output=True, text=True, timeout=900, check=False)
+    except OSError as exc:
+        pytest.skip(f"npm could not be started: {exc}")
     if install.returncode != 0:
         pytest.skip(f"npm install failed: {install.stderr[-200:]}")
     return root
