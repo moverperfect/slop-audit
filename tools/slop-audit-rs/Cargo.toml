@@ -27,6 +27,11 @@ walkdir = "2.5"
 # occasions when a backtracking engine did not finish on a bundled stylesheet. One rule
 # needs a lookaround and gets its boundary checked by hand, in secret_rules.rs.
 regex = "1"
+# YAML pipeline definitions. GitHub `${{ }}` expressions are quoted before parse,
+# because this crate treats `{` as a flow map where PyYAML leaves them as strings.
+serde_yaml = "0.9"
+# Command-table patterns use lookaround, matching the reference's engine.
+fancy-regex = "0.14"
 
 [profile.release]
 strip = true

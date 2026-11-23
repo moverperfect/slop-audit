@@ -146,8 +146,7 @@ fn measured(repo: &Path, language: &str, exec_tests: bool) -> Vec<Indicator> {
     panel.push(indicators::config_presence::present_at(
         repo, &indicators::config_presence::PRECOMMIT)); // L1.9
     panel.push(indicators::config_presence::l1_10(repo)); // L1.10
-    panel.push(indicators::config_presence::present_at(
-        repo, &indicators::config_presence::CONTAINER)); // L1.11
+    panel.push(indicators::config_presence::l1_11(repo)); // L1.11
     // L1.12. Dead code: a statement after a terminator, which is decidable from syntax
     // alone, and a definition nothing in the repository names, which is decidable only where
     // nothing can reach the name by a route a syntactic scan cannot follow.

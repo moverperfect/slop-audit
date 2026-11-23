@@ -205,12 +205,12 @@ def decision_space_coverage(repo: Path, timeout_seconds: float, runtime_override
     """L1.19 for Ruby: SimpleCov branch coverage from the suite's own coverage/.resultset.json.
     Bands match the spec: >90% Healthy, 60-90% Not Healthy, <60% Slop. `runtime_override` is
     accepted for a uniform harness signature and ignored: the target's shims select ruby."""
-    ruby, bundle, env, prov = _pin(repo, timeout_seconds)
-    if ruby is None or bundle is None:
-        return _na("needs Ruby and Bundler (ruby, bundle) in PATH")
     runner = _detect_runner(repo)
     if runner is None:
         return _na("no RSpec (spec/, .rspec, or rspec in Gemfile.lock) or Minitest (test/ + Rakefile) suite detected")
+    ruby, bundle, env, prov = _pin(repo, timeout_seconds)
+    if ruby is None or bundle is None:
+        return _na("needs Ruby and Bundler (ruby, bundle) in PATH")
     version = _ruby_version(ruby, repo, timeout_seconds, env) + prov
 
     resultset_file = repo / "coverage" / ".resultset.json"
@@ -268,12 +268,12 @@ def test_determinism(repo: Path, runs: int, timeout_seconds: float, runtime_over
     <4/5 Slop. A run that builds nothing or runs no tests is not a determinism result, so
     return n/a with the reason rather than a misleading 0/5. When the suite runs but some
     tests fail, the failing seeds' summary lines are surfaced in details."""
-    ruby, bundle, env, prov = _pin(repo, timeout_seconds)
-    if ruby is None or bundle is None:
-        return _na("needs Ruby and Bundler (ruby, bundle) in PATH")
     runner = _detect_runner(repo)
     if runner is None:
         return _na("no RSpec (spec/, .rspec, or rspec in Gemfile.lock) or Minitest (test/ + Rakefile) suite detected")
+    ruby, bundle, env, prov = _pin(repo, timeout_seconds)
+    if ruby is None or bundle is None:
+        return _na("needs Ruby and Bundler (ruby, bundle) in PATH")
     version = _ruby_version(ruby, repo, timeout_seconds, env) + prov
 
     per_seed: list[tuple[int, str]] = []

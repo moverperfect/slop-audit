@@ -68,7 +68,7 @@ fn classify_files(repo: &Path) -> (BTreeSet<String>, BTreeSet<String>) {
         let relpath = path.strip_prefix(repo).unwrap_or(path).to_string_lossy().into_owned();
         let reason = crate::bucket_reason(path, repo, has_packages, crate::PRODUCTION,
                                           crate::PRODUCTION_BUCKETS, &disowned);
-        if matches!(reason, Some("tests") | Some("test")) {
+        if crate::is_a_test_reason(reason) {
             tests.insert(relpath);
         } else {
             production.insert(relpath);
